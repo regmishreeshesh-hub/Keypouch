@@ -3,8 +3,13 @@ import { Contact, ContactPayload } from '../types';
 import * as contactService from '../services/contactService';
 import Modal from '../components/Modal';
 import { Search, Plus, Edit2, Trash2, Download, Phone, MapPin, User, Loader2, AlertTriangle, Star, Zap, Save, X, Check } from 'lucide-react';
+import { canDelete as canDeleteForRole, canModify as canModifyForRole, getRole } from '../utils/permissions';
 
 const Contacts: React.FC = () => {
+  const role = getRole();
+  const canModify = canModifyForRole(role);
+  const canDelete = canDeleteForRole(role);
+
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -48,6 +53,10 @@ const Contacts: React.FC = () => {
   // Modal Save (New Contact or Fallback)
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canModify) {
+      setError('View-only access: you cannot add or edit contacts.');
+      return;
+    }
     try {
       if (currentContact.id) {
         await contactService.updateContact(currentContact.id, currentContact as ContactPayload);
@@ -64,6 +73,7 @@ const Contacts: React.FC = () => {
   const handleQuickSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!quickAddData.name || !quickAddData.phone) return;
+    if (!canModify) return;
     
     try {
         await contactService.createContact({ ...quickAddData, isFavorite: false });
@@ -77,6 +87,7 @@ const Contacts: React.FC = () => {
 
   // Inline Editing Handlers
   const startEditing = (contact: Contact) => {
+    if (!canModify) return;
     setEditingId(contact.id);
     setEditForm({
       name: contact.name,
@@ -92,6 +103,7 @@ const Contacts: React.FC = () => {
   };
 
   const saveEditing = async (id: number) => {
+    if (!canModify) return;
     try {
       await contactService.updateContact(id, editForm);
       setEditingId(null);
@@ -102,6 +114,7 @@ const Contacts: React.FC = () => {
   };
 
   const handleToggleFavorite = async (contact: Contact) => {
+    if (!canModify) return;
     const updatedContact = { ...contact, isFavorite: !contact.isFavorite };
     // Optimistic update
     setContacts(prev => prev.map(c => c.id === contact.id ? updatedContact : c));
@@ -116,12 +129,14 @@ const Contacts: React.FC = () => {
   };
 
   const initiateDelete = (id: number) => {
+    if (!canDelete) return;
     setContactToDelete(id);
     setIsDeleteModalOpen(true);
   };
 
   const confirmDelete = async () => {
     if (contactToDelete === null) return;
+    if (!canDelete) return;
     
     try {
       await contactService.deleteContact(contactToDelete);
@@ -150,6 +165,7 @@ const Contacts: React.FC = () => {
   };
 
   const openAdd = () => {
+    if (!canModify) return;
     setCurrentContact({ name: '', phone: '', address: '', isFavorite: false });
     setIsModalOpen(true);
   };
@@ -185,17 +201,19 @@ const Contacts: React.FC = () => {
              {showFavorites ? 'Favorites Only' : 'Favorites'}
            </button>
            
-           <button
-            onClick={() => { setShowQuickAdd(!showQuickAdd); if(!showQuickAdd) setTimeout(() => document.getElementById('quick-name')?.focus(), 50); }}
-            className={`flex-1 sm:flex-none inline-flex items-center justify-center px-4 py-2 border shadow-sm text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors ${
-                showQuickAdd
-                ? 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-700'
-                : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'
-            }`}
-           >
-            <Zap className={`w-4 h-4 mr-2 ${showQuickAdd ? 'text-indigo-600 dark:text-indigo-400 fill-current' : ''}`} />
-            Quick Add
-           </button>
+           {canModify && (
+             <button
+              onClick={() => { setShowQuickAdd(!showQuickAdd); if(!showQuickAdd) setTimeout(() => document.getElementById('quick-name')?.focus(), 50); }}
+              className={`flex-1 sm:flex-none inline-flex items-center justify-center px-4 py-2 border shadow-sm text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors ${
+                  showQuickAdd
+                  ? 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-700'
+                  : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'
+              }`}
+             >
+              <Zap className={`w-4 h-4 mr-2 ${showQuickAdd ? 'text-indigo-600 dark:text-indigo-400 fill-current' : ''}`} />
+              Quick Add
+             </button>
+           )}
 
            <button
             onClick={handleExport}
@@ -204,13 +222,15 @@ const Contacts: React.FC = () => {
             <Download className="w-4 h-4 mr-2" />
             Export
           </button>
-          <button
-            onClick={openAdd}
-            className="flex-1 sm:flex-none inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Add Contact
-          </button>
+          {canModify && (
+            <button
+              onClick={openAdd}
+              className="flex-1 sm:flex-none inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add Contact
+            </button>
+          )}
         </div>
       </div>
 
@@ -240,9 +260,9 @@ const Contacts: React.FC = () => {
                 ? "No favorite contacts match your search." 
                 : showFavorites 
                 ? "You haven't marked any contacts as favorites yet."
-                : "Get started by creating a new contact."}
+                : canModify ? "Get started by creating a new contact." : "No contacts to display."}
            </p>
-           {!showFavorites && (
+           {!showFavorites && canModify && (
                <div className="mt-6">
                  <button
                    onClick={openAdd}
@@ -360,19 +380,31 @@ const Contacts: React.FC = () => {
                   <div className="px-4 py-4 sm:px-6">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center min-w-0 gap-3">
-                            <button 
-                                onClick={(e) => { e.stopPropagation(); handleToggleFavorite(contact); }}
-                                className="focus:outline-none transition-transform active:scale-95"
-                                title={contact.isFavorite ? "Remove from favorites" : "Add to favorites"}
-                            >
+                            {canModify ? (
+                              <button 
+                                  onClick={(e) => { e.stopPropagation(); handleToggleFavorite(contact); }}
+                                  className="focus:outline-none transition-transform active:scale-95"
+                                  title={contact.isFavorite ? "Remove from favorites" : "Add to favorites"}
+                              >
+                                  <Star 
+                                      className={`w-5 h-5 ${
+                                          contact.isFavorite 
+                                          ? 'fill-yellow-400 text-yellow-400' 
+                                          : 'text-gray-300 hover:text-yellow-400'
+                                      }`} 
+                                  />
+                              </button>
+                            ) : (
+                              <span title={contact.isFavorite ? "Favorite" : "Not favorite"}>
                                 <Star 
-                                    className={`w-5 h-5 ${
-                                        contact.isFavorite 
-                                        ? 'fill-yellow-400 text-yellow-400' 
-                                        : 'text-gray-300 hover:text-yellow-400'
-                                    }`} 
+                                  className={`w-5 h-5 ${
+                                      contact.isFavorite 
+                                      ? 'fill-yellow-400 text-yellow-400' 
+                                      : 'text-gray-300'
+                                  }`} 
                                 />
-                            </button>
+                              </span>
+                            )}
                             <div className="bg-primary-100 dark:bg-primary-900/50 p-2 rounded-full">
                             <User className="h-5 w-5 text-primary-600 dark:text-primary-400" />
                             </div>
@@ -387,12 +419,16 @@ const Contacts: React.FC = () => {
                             </div>
                         </div>
                         <div className="flex gap-2">
-                        <button onClick={() => startEditing(contact)} className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-gray-700 rounded-full transition-colors">
-                            <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => initiateDelete(contact.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors">
-                            <Trash2 className="w-4 h-4" />
-                        </button>
+                          {canModify && (
+                            <button onClick={() => startEditing(contact)} className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-gray-700 rounded-full transition-colors">
+                                <Edit2 className="w-4 h-4" />
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button onClick={() => initiateDelete(contact.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors">
+                                <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                     </div>
                     {contact.address && (

@@ -3,6 +3,7 @@ import { Secret, SecretPayload, SecretCategory, CustomCategory } from '../types'
 import * as secretService from '../services/secretService';
 import Modal from '../components/Modal';
 import { Search, Plus, Trash2, Key, Database, Globe, FileText, Copy, Eye, EyeOff, Loader2, Lock, AlertTriangle, Share2, Check, Tag, Settings, X } from 'lucide-react';
+import { canDelete as canDeleteForRole, canManageCategories as canManageCategoriesForRole, canModify as canModifyForRole, canShare as canShareForRole, getRole } from '../utils/permissions';
 
 const DEFAULT_CATEGORIES = [
   { id: 'general', label: 'General', icon: FileText, color: 'bg-orange-100 text-orange-800', darkColor: 'dark:bg-orange-900/50 dark:text-orange-200' },
@@ -12,6 +13,12 @@ const DEFAULT_CATEGORIES = [
 ];
 
 const Secrets: React.FC = () => {
+  const role = getRole();
+  const canModify = canModifyForRole(role);
+  const canDelete = canDeleteForRole(role);
+  const canManageCategories = canManageCategoriesForRole(role);
+  const canShare = canShareForRole(role);
+
   const [secrets, setSecrets] = useState<Secret[]>([]);
   const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,6 +91,7 @@ const Secrets: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canModify) return;
     try {
       const payload = currentSecret as SecretPayload;
       if (currentSecret.id) {
@@ -100,6 +108,7 @@ const Secrets: React.FC = () => {
 
   const handleAddCategory = async (e: React.FormEvent) => {
       e.preventDefault();
+      if (!canManageCategories) return;
       if (!newCategoryName.trim()) return;
       setCategoryLoading(true);
       try {
@@ -114,6 +123,7 @@ const Secrets: React.FC = () => {
   };
 
   const handleDeleteCategory = async (id: string) => {
+      if (!canDelete) return;
       if(!window.confirm('Are you sure? Secrets in this category will not be deleted but may display as Uncategorized.')) return;
       try {
           await secretService.deleteCustomCategory(id);
@@ -124,12 +134,14 @@ const Secrets: React.FC = () => {
   };
 
   const initiateDelete = (id: number) => {
+    if (!canDelete) return;
     setSecretToDelete(id);
     setIsDeleteModalOpen(true);
   };
 
   const confirmDelete = async () => {
     if (secretToDelete === null) return;
+    if (!canDelete) return;
     try {
       await secretService.deleteSecret(secretToDelete);
       fetchSecrets();
@@ -153,11 +165,13 @@ const Secrets: React.FC = () => {
   };
 
   const openAdd = () => {
+    if (!canModify) return;
     setCurrentSecret({ title: '', category: 'general', notes: '' });
     setIsEditModalOpen(true);
   };
 
   const openEdit = async (id: number) => {
+      if (!canModify) return;
       try {
         const data = await secretService.getSecretDetails(id);
         setCurrentSecret(data);
@@ -168,6 +182,7 @@ const Secrets: React.FC = () => {
   }
 
   const openShare = async (id: number) => {
+      if (!canShare) return;
       // Fetch details first to ensure it exists
       try {
           const data = await secretService.getSecretDetails(id);
@@ -183,6 +198,7 @@ const Secrets: React.FC = () => {
 
   const generateShareLink = async () => {
       if (!currentSecret.id) return;
+      if (!canShare) return;
       setSharingLoading(true);
       try {
           const result = await secretService.createShareLink(currentSecret.id, shareConfig);
@@ -216,20 +232,24 @@ const Secrets: React.FC = () => {
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Securely store passwords, API keys, and notes.</p>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
-            <button
-            onClick={() => setIsCategoryModalOpen(true)}
-            className="flex-1 sm:flex-none inline-flex items-center justify-center px-4 py-2 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-            >
-            <Settings className="w-4 h-4 mr-2" />
-            Manage Categories
-            </button>
-            <button
-            onClick={openAdd}
-            className="flex-1 sm:flex-none inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-            >
-            <Plus className="w-4 h-4 mr-2" />
-            Add Secret
-            </button>
+            {canManageCategories && (
+              <button
+              onClick={() => setIsCategoryModalOpen(true)}
+              className="flex-1 sm:flex-none inline-flex items-center justify-center px-4 py-2 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+              >
+              <Settings className="w-4 h-4 mr-2" />
+              Manage Categories
+              </button>
+            )}
+            {canModify && (
+              <button
+              onClick={openAdd}
+              className="flex-1 sm:flex-none inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+              >
+              <Plus className="w-4 h-4 mr-2" />
+              Add Secret
+              </button>
+            )}
         </div>
       </div>
 
@@ -316,15 +336,21 @@ const Secrets: React.FC = () => {
                     View Details
                   </button>
                   <div className="flex gap-2">
-                    <button onClick={() => openShare(secret.id)} className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400" title="Share">
-                        <Share2 className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => openEdit(secret.id)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" title="Edit">
-                        <Key className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => initiateDelete(secret.id)} className="text-gray-400 hover:text-red-600 dark:hover:text-red-400" title="Delete">
-                        <Trash2 className="w-4 h-4" />
-                    </button>
+                    {canShare && (
+                      <button onClick={() => openShare(secret.id)} className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400" title="Share">
+                          <Share2 className="w-4 h-4" />
+                      </button>
+                    )}
+                    {canModify && (
+                      <button onClick={() => openEdit(secret.id)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" title="Edit">
+                          <Key className="w-4 h-4" />
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button onClick={() => initiateDelete(secret.id)} className="text-gray-400 hover:text-red-600 dark:hover:text-red-400" title="Delete">
+                          <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -390,26 +416,28 @@ const Secrets: React.FC = () => {
       {/* Manage Categories Modal */}
       <Modal isOpen={isCategoryModalOpen} onClose={() => setIsCategoryModalOpen(false)} title="Manage Categories">
           <div className="space-y-6">
-              <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Add New Category</label>
-                  <form onSubmit={handleAddCategory} className="flex gap-2">
-                      <input 
-                        type="text" 
-                        required
-                        placeholder="e.g. Finance"
-                        className="flex-1 rounded-md border-gray-300 dark:border-gray-600 border p-2 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                        value={newCategoryName}
-                        onChange={(e) => setNewCategoryName(e.target.value)}
-                      />
-                      <button 
-                        type="submit" 
-                        disabled={categoryLoading || !newCategoryName.trim()}
-                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none disabled:opacity-50"
-                      >
-                          {categoryLoading ? <Loader2 className="animate-spin h-4 w-4" /> : 'Add'}
-                      </button>
-                  </form>
-              </div>
+              {canManageCategories && (
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Add New Category</label>
+                    <form onSubmit={handleAddCategory} className="flex gap-2">
+                        <input 
+                          type="text" 
+                          required
+                          placeholder="e.g. Finance"
+                          className="flex-1 rounded-md border-gray-300 dark:border-gray-600 border p-2 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                          value={newCategoryName}
+                          onChange={(e) => setNewCategoryName(e.target.value)}
+                        />
+                        <button 
+                          type="submit" 
+                          disabled={categoryLoading || !newCategoryName.trim()}
+                          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none disabled:opacity-50"
+                        >
+                            {categoryLoading ? <Loader2 className="animate-spin h-4 w-4" /> : 'Add'}
+                        </button>
+                    </form>
+                </div>
+              )}
 
               <div>
                   <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Custom Categories</h4>
@@ -423,12 +451,14 @@ const Secrets: React.FC = () => {
                                       <Tag className="w-4 h-4 text-teal-600 dark:text-teal-400" />
                                       <span className="text-sm text-gray-900 dark:text-white">{cat.label}</span>
                                   </div>
-                                  <button 
-                                    onClick={() => handleDeleteCategory(cat.id)}
-                                    className="text-gray-400 hover:text-red-500 transition-colors"
-                                  >
-                                      <Trash2 className="w-4 h-4" />
-                                  </button>
+                                  {canDelete && (
+                                    <button 
+                                      onClick={() => handleDeleteCategory(cat.id)}
+                                      className="text-gray-400 hover:text-red-500 transition-colors"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  )}
                               </li>
                           ))}
                       </ul>
