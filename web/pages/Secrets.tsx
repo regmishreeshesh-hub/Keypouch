@@ -12,6 +12,133 @@ const DEFAULT_CATEGORIES = [
   { id: 'database', label: 'Database', icon: Database, color: 'bg-green-100 text-green-800', darkColor: 'dark:bg-green-900/50 dark:text-green-200' },
 ];
 
+const SECRET_TYPE_CONFIGS = {
+  'personal_access_token': {
+    label: 'Personal Access Token',
+    fields: ['title', 'token', 'notes'],
+    optionalFields: ['expiration_date', 'environment_tags'],
+    metadata: { expiration_date: true, environment_tags: true, access_scope: false },
+    validation: {
+      pat_token: { pattern: /^[a-zA-Z0-9_\-\.]{20,}$/, message: 'Invalid Personal Access Token format' }
+    },
+    placeholders: {
+      token: 'pat_xxxxx',
+      notes: 'Personal Access Token with specific permissions and scope (e.g., GitHub PAT, DigitalOcean PAT, GitLab PAT)'
+    }
+  },
+  'api_token': {
+    label: 'API Token',
+    fields: ['title', 'token', 'notes'],
+    optionalFields: ['expiration_date', 'environment_tags'],
+    metadata: { expiration_date: true, environment_tags: true, access_scope: false },
+    validation: {
+      api_token: { pattern: /^[a-zA-Z0-9_\-\.]{20,}$/, message: 'Invalid API Token format' }
+    },
+    placeholders: {
+      token: 'api_token_xxxxx',
+      notes: 'API Token for service authentication (e.g., OpenAI API, Stripe API, AWS API Key)'
+    }
+  },
+  'password': {
+    label: 'Password',
+    fields: ['title', 'username', 'password', 'url', 'notes'],
+    optionalFields: ['expiration_date', 'environment_tags'],
+    metadata: { expiration_date: true, environment_tags: true, access_scope: false },
+    validation: {
+      password: { required: true, message: 'Password is required' }
+    },
+    placeholders: {
+      password: 'enter-secure-password',
+      url: 'e.g., https://example.com',
+      notes: 'Add any additional context or usage instructions'
+    }
+  },
+  'database': {
+    label: 'Database Connection',
+    fields: ['title', 'connection_string', 'notes'],
+    optionalFields: ['expiration_date', 'environment_tags'],
+    metadata: { expiration_date: true, environment_tags: true, access_scope: false },
+    validation: {
+      connection_string: { required: true, message: 'Connection string is required' }
+    },
+    placeholders: {
+      connection_string: 'e.g., mongodb://user:pass@host:port/db',
+      notes: 'Database type, connection parameters, etc.'
+    }
+  },
+  'private_key': {
+    label: 'Private Key',
+    fields: ['title', 'key_data', 'notes'],
+    optionalFields: ['expiration_date', 'access_scope'],
+    metadata: { expiration_date: true, environment_tags: false, access_scope: true },
+    validation: {
+      key_data: { pattern: /^-----BEGIN.*PRIVATE KEY-----/, message: 'Invalid private key format' }
+    },
+    placeholders: {
+      key_data: '-----BEGIN PRIVATE KEY-----\n...',
+      notes: 'PEM format private key content'
+    }
+  },
+  'aws_credentials': {
+    label: 'AWS Credentials',
+    fields: ['title', 'access_key_id', 'secret_access_key', 'region', 'notes'],
+    optionalFields: ['expiration_date', 'environment_tags', 'access_scope'],
+    metadata: { expiration_date: true, environment_tags: true, access_scope: true },
+    validation: {
+      access_key_id: { pattern: /^[A-Z0-9]{20}$/, message: 'Invalid AWS Access Key ID format' },
+      secret_access_key: { pattern: /^[a-zA-Z0-9\/+]{40}$/, message: 'Invalid AWS Secret Access Key format' }
+    },
+    placeholders: {
+      access_key_id: 'AKIAJxxxxx',
+      secret_access_key: 'xxxxx',
+      region: 'e.g., us-east-1, eu-west-2',
+      notes: 'IAM permissions, associated services, etc.'
+    }
+  },
+  'encryption_key': {
+    label: 'Encryption Key',
+    fields: ['title', 'key_value', 'algorithm', 'notes'],
+    optionalFields: ['expiration_date', 'environment_tags'],
+    metadata: { expiration_date: true, environment_tags: true, access_scope: false },
+    validation: {
+      key_value: { required: true, message: 'Key value is required' }
+    },
+    placeholders: {
+      key_value: 'base64-encoded-key-value',
+      algorithm: 'e.g., AES-256, RSA-2048',
+      notes: 'Encryption algorithm and key size'
+    }
+  },
+  'github_token': {
+    label: 'GitHub Token',
+    fields: ['title', 'token', 'username', 'notes'],
+    optionalFields: ['expiration_date', 'environment_tags'],
+    metadata: { expiration_date: true, environment_tags: true, access_scope: false },
+    validation: {
+      token: { pattern: /^ghp_[a-zA-Z0-9]{36}$/, message: 'Invalid GitHub personal access token format' }
+    },
+    placeholders: {
+      token: 'ghp_xxxxx',
+      username: 'GitHub username',
+      notes: 'Repository permissions, token scope, etc.'
+    }
+  },
+  'gitlab_token': {
+    label: 'GitLab Token',
+    fields: ['title', 'token', 'instance_url', 'notes'],
+    optionalFields: ['expiration_date', 'environment_tags'],
+    metadata: { expiration_date: true, environment_tags: true, access_scope: false },
+    validation: {
+      token: { pattern: /^glpat-[a-zA-Z0-9\-_]{20}$/, message: 'Invalid GitLab personal access token format' }
+    },
+    placeholders: {
+      token: 'glpat_xxxxx',
+      instance_url: 'e.g., https://gitlab.com',
+      notes: 'Project permissions, token scope, etc.'
+    }
+  }
+};
+
 const Secrets: React.FC = () => {
   const role = getRole();
   const canModify = canModifyForRole(role);
