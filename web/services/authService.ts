@@ -23,6 +23,17 @@ export const register = async (username: string, password: string, securityQuest
   }
 };
 
+export const registerAdmin = async (payload: { username: string; password: string; securityQuestion: string; securityAnswer: string; companyName: string }): Promise<AuthResponse> => {
+  try {
+    return await request(`${API_BASE_URL}/register-admin`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  } catch (error: any) {
+    throw new Error(error.error || 'Admin registration failed');
+  }
+};
+
 export const getSecurityQuestion = async (username: string): Promise<{ question: string }> => {
     try {
         return await request(`${API_BASE_URL}/auth/security-question?username=${encodeURIComponent(username)}`, {

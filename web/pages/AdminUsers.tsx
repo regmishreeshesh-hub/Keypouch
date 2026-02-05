@@ -393,7 +393,14 @@ const AdminUsers: React.FC = () => {
                           </span>
                         </div>
                         <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900 dark:text-white">{user.username}</div>
+                          <div className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-2">
+                            {user.username}
+                            {user.is_demo && (
+                              <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+                                Demo
+                              </span>
+                            )}
+                          </div>
                           <div className="text-xs text-gray-500 dark:text-gray-400">ID: {user.id}</div>
                         </div>
                       </div>

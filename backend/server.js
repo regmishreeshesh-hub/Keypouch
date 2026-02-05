@@ -123,7 +123,7 @@ app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
     
     const result = await pool.query(
-      'SELECT id, username, password, role, is_disabled, session_version, must_reset_password FROM users WHERE username = $1',
+      'SELECT id, username, password, role, is_disabled, session_version, must_reset_password, is_demo FROM users WHERE username = $1',
       [username]
     );
 
@@ -159,7 +159,8 @@ app.post('/api/login', async (req, res) => {
       token,
       username: user.username,
       role: user.role || 'view',
-      must_reset_password: user.must_reset_password || false
+      must_reset_password: user.must_reset_password || false,
+      is_demo: user.is_demo || false
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -349,6 +350,66 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
+// Customer Admin Registration (Public endpoint for first-time setup)
+app.post('/api/register-admin', async (req, res) => {
+  try {
+    const { username, password, securityQuestion, securityAnswer, companyName } = req.body;
+    
+    // Check if any real admin already exists
+    const existingAdmin = await pool.query(
+      'SELECT id FROM users WHERE role = $1 AND is_demo = FALSE',
+      ['admin']
+    );
+
+    if (existingAdmin.rows.length > 0) {
+      return res.status(403).json({ error: 'Admin user already exists. Contact support for admin access.' });
+    }
+
+    // Check if username already exists
+    const existingUser = await pool.query(
+      'SELECT id FROM users WHERE username = $1',
+      [username]
+    );
+
+    if (existingUser.rows.length > 0) {
+      return res.status(400).json({ error: 'Username already exists' });
+    }
+
+    // Insert new real admin user
+    const result = await pool.query(
+      'INSERT INTO users (username, password, role, security_question, security_answer, is_demo, password_changed_at) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP) RETURNING id, username, role, session_version, is_demo',
+      [username, password, 'admin', securityQuestion || null, securityAnswer || null, false]
+    );
+
+    const newAdmin = result.rows[0];
+
+    // Disable demo accounts after real admin creation (keeps the demo users for development, but prevents use in customer setups).
+    await pool.query(
+      'UPDATE users SET is_disabled = TRUE, session_version = session_version + 1 WHERE is_demo = TRUE'
+    );
+    await logActivity(newAdmin.username, 'DEMO_DISABLED', 'Disabled demo accounts after real admin setup', req);
+
+    const token = jwt.sign(
+      { id: newAdmin.id, username: newAdmin.username, role: newAdmin.role, sv: newAdmin.session_version || 0 },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    await logActivity(newAdmin.username, 'ADMIN_REGISTER', `Real admin user registered for company: ${companyName || 'N/A'}`, req);
+
+    res.json({
+      message: 'Admin registration successful',
+      token,
+      username: newAdmin.username,
+      role: newAdmin.role,
+      is_demo: newAdmin.is_demo
+    });
+  } catch (error) {
+    console.error('Admin registration error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // User Management Routes (Admin Only)
 app.get('/api/users', authenticateToken, async (req, res) => {
   try {
@@ -357,7 +418,7 @@ app.get('/api/users', authenticateToken, async (req, res) => {
     }
 
     const result = await pool.query(
-      'SELECT id, username, role, created_at, is_disabled, must_reset_password, mfa_enabled, last_login_at FROM users ORDER BY created_at'
+      'SELECT id, username, role, created_at, is_disabled, must_reset_password, mfa_enabled, last_login_at, is_demo FROM users ORDER BY created_at'
     );
 
     res.json(result.rows);

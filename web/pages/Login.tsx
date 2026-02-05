@@ -31,6 +31,7 @@ const Login: React.FC = () => {
       localStorage.setItem('token', data.token);
       localStorage.setItem('username', data.username);
       localStorage.setItem('role', data.role);
+      localStorage.setItem('is_demo', data.is_demo.toString());
       localStorage.setItem('must_reset_password', data.must_reset_password ? 'true' : 'false');
       if (data.must_reset_password) {
         navigate('/change-password', { replace: true });
@@ -67,6 +68,10 @@ const Login: React.FC = () => {
           Or{' '}
           <Link to="/register" className="font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300">
             create a new account
+          </Link>
+          <span className="mx-2 text-gray-400">•</span>
+          <Link to="/admin-setup" className="font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300">
+            first-time admin setup
           </Link>
         </p>
       </div>

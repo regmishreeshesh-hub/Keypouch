@@ -7,6 +7,7 @@ export interface User {
   must_reset_password?: boolean;
   mfa_enabled?: boolean;
   session_version?: number;
+  is_demo?: boolean;
   last_login_at?: string | null;
   password_changed_at?: string | null;
   security_question?: string;
@@ -19,6 +20,7 @@ export interface AuthResponse {
   username: string;
   role: 'admin' | 'full-access' | 'modify' | 'view';
   must_reset_password?: boolean;
+  is_demo?: boolean;
   error?: string;
 }
 

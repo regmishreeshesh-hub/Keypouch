@@ -310,6 +310,68 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
+// Customer Admin Registration (Public endpoint for first-time setup)
+app.post('/api/register-admin', async (req, res) => {
+  try {
+    const { username, password, securityQuestion, securityAnswer, companyName } = req.body;
+
+    // Check if any real admin already exists
+    const realAdminExists = users.some(u => u.role === ROLE_ADMIN && !u.is_demo);
+    if (realAdminExists) {
+      return res.status(403).json({ error: 'Admin user already exists. Contact support for admin access.' });
+    }
+
+    if (!username || !password || !securityQuestion || !securityAnswer || !companyName) {
+      return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    if (users.find(u => u.username === username)) {
+      return res.status(400).json({ error: 'Username already exists' });
+    }
+
+    const newAdmin = {
+      id: users.length + 1,
+      username,
+      password,
+      role: ROLE_ADMIN,
+      is_disabled: false,
+      must_reset_password: false,
+      mfa_enabled: false,
+      mfa_secret: null,
+      session_version: 0,
+      last_login_at: null,
+      created_at: new Date().toISOString(),
+      security_question: securityQuestion,
+      security_answer: securityAnswer,
+      is_demo: false
+    };
+    users.push(newAdmin);
+
+    // Disable demo accounts after real admin setup
+    users = users.map(u => u.is_demo ? { ...u, is_disabled: true, session_version: (u.session_version || 0) + 1 } : u);
+    logActivity(newAdmin.username, 'DEMO_DISABLED', 'Disabled demo accounts after real admin setup');
+
+    const token = jwt.sign(
+      { id: newAdmin.id, username: newAdmin.username, role: newAdmin.role, sv: newAdmin.session_version || 0 },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    logActivity(newAdmin.username, 'ADMIN_REGISTER', `Real admin user registered for company: ${companyName}`);
+
+    res.json({
+      message: 'Admin registration successful',
+      token,
+      username: newAdmin.username,
+      role: newAdmin.role,
+      is_demo: false
+    });
+  } catch (error) {
+    console.error('Admin registration error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // User Management Routes (Admin Only)
 app.get('/api/users', authenticateToken, async (req, res) => {
   try {

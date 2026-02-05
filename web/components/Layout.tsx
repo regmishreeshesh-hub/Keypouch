@@ -27,6 +27,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     localStorage.removeItem('username');
     localStorage.removeItem('role');
     localStorage.removeItem('must_reset_password');
+    localStorage.removeItem('is_demo');
     setIsLogoutModalOpen(false);
     navigate('/login');
   };

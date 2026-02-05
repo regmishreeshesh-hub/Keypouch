@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import AdminSetup from './pages/AdminSetup';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import ChangePassword from './pages/ChangePassword';
@@ -11,7 +12,6 @@ import AdminUsers from './pages/AdminUsers';
 import AuditLogs from './pages/AuditLogs';
 import SharedSecret from './pages/SharedSecret';
 import Layout from './components/Layout';
-import { register } from './services/authService';
 import { ThemeProvider } from './contexts/ThemeContext';
 
 const ProtectedRoute = ({ children }: { children: React.ReactElement }) => {
@@ -53,25 +53,6 @@ const PublicRoute = ({ children }: { children: React.ReactElement }) => {
 };
 
 const App: React.FC = () => {
-  useEffect(() => {
-    // Clear any existing tokens from localStorage to ensure fresh login
-    localStorage.removeItem('token');
-    localStorage.removeItem('role');
-    localStorage.removeItem('username');
-    
-    // Attempt to create the default admin user on startup
-    const initDefaultUser = async () => {
-      try {
-        await register('admin', 'admin', 'What is your favorite color?', 'blue');
-        console.log('Default admin user initialized');
-      } catch (error) {
-        // User likely already exists or backend is unreachable, which is fine
-        console.log('Default admin user check skipped or failed (user likely exists)');
-      }
-    };
-    initDefaultUser();
-  }, []);
-
   return (
     <ThemeProvider>
       <HashRouter>
@@ -84,6 +65,11 @@ const App: React.FC = () => {
           <Route path="/register" element={
             <PublicRoute>
               <Register />
+            </PublicRoute>
+          } />
+          <Route path="/admin-setup" element={
+            <PublicRoute>
+              <AdminSetup />
             </PublicRoute>
           } />
           <Route path="/forgot-password" element={

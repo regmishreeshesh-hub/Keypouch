@@ -16,6 +16,7 @@ CREATE TABLE users (
     mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE,
     mfa_secret TEXT,
     session_version INTEGER NOT NULL DEFAULT 0,
+    is_demo BOOLEAN NOT NULL DEFAULT FALSE,
     last_login_at TIMESTAMP,
     password_changed_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -51,16 +52,16 @@ CREATE INDEX idx_contacts_user_id ON contacts(user_id);
 CREATE INDEX idx_secrets_user_id ON secrets(user_id);
 CREATE INDEX idx_secrets_category ON secrets(category);
 
--- Create default admin user (password is 'admin')
-INSERT INTO users (username, password, role) 
-VALUES ('admin', 'admin', 'admin');
+-- Create default demo admin user (password is 'admin')
+INSERT INTO users (username, password, role, is_demo) 
+VALUES ('admin', 'admin', 'admin', TRUE);
 
--- Create sample users with different roles
-INSERT INTO users (username, password, role, security_question, security_answer) 
+-- Create sample users with different roles (demo users)
+INSERT INTO users (username, password, role, security_question, security_answer, is_demo) 
 VALUES 
-  ('viewuser', 'viewuser', 'view', 'What is your favorite color?', 'blue'),
-  ('modifyuser', 'modifyuser', 'modify', 'What is your favorite color?', 'green'),
-  ('fulluser', 'fulluser', 'full-access', 'What is your favorite color?', 'red');
+  ('viewuser', 'viewuser', 'view', 'What is your favorite color?', 'blue', TRUE),
+  ('modifyuser', 'modifyuser', 'modify', 'What is your favorite color?', 'green', TRUE),
+  ('fulluser', 'fulluser', 'full-access', 'What is your favorite color?', 'red', TRUE);
 
 -- Insert sample contacts for admin user
 INSERT INTO contacts (user_id, name, phone, address) VALUES
@@ -124,3 +125,6 @@ CREATE TABLE custom_categories (
 
 -- Create index for custom_categories
 CREATE INDEX idx_custom_categories_user_id ON custom_categories(user_id);
+
+-- Add unique constraint for real admin users (only one real admin per system)
+CREATE UNIQUE INDEX idx_real_admin ON users (role) WHERE role = 'admin' AND is_demo = FALSE;
