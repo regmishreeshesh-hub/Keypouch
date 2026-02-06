@@ -3,7 +3,8 @@ import { Secret, SecretPayload, SecretCategory, CustomCategory } from '../types'
 import * as secretService from '../services/secretService';
 import Modal from '../components/Modal';
 import { Search, Plus, Trash2, Key, Database, Globe, FileText, Copy, Eye, EyeOff, Loader2, Lock, AlertTriangle, Share2, Check, Tag, Settings, X } from 'lucide-react';
-import { canDelete as canDeleteForRole, canManageCategories as canManageCategoriesForRole, canModify as canModifyForRole, canShare as canShareForRole, getRole } from '../utils/permissions';
+import { can, canManageCategories as canManageCategoriesForRole, canModify as canModifyForRole, canShareSecrets as canShareSecretsForRole, getRole } from '../utils/permissions';
+import { getUserIdFromToken } from '../utils/auth';
 
 const DEFAULT_CATEGORIES = [
   { id: 'general', label: 'General', icon: FileText, color: 'bg-orange-100 text-orange-800', darkColor: 'dark:bg-orange-900/50 dark:text-orange-200' },
@@ -141,10 +142,11 @@ const SECRET_TYPE_CONFIGS = {
 
 const Secrets: React.FC = () => {
   const role = getRole();
+  const currentUserId = getUserIdFromToken();
   const canModify = canModifyForRole(role);
-  const canDelete = canDeleteForRole(role);
   const canManageCategories = canManageCategoriesForRole(role);
-  const canShare = canShareForRole(role);
+  const canShare = canShareSecretsForRole(role);
+  const canDeleteSecret = (secret?: Secret) => can(role, 'secrets', 'delete', { isOwner: secret?.user_id === currentUserId });
 
   const [secrets, setSecrets] = useState<Secret[]>([]);
   const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
@@ -170,7 +172,7 @@ const Secrets: React.FC = () => {
 
   // Delete Confirmation State
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [secretToDelete, setSecretToDelete] = useState<number | null>(null);
+  const [secretToDelete, setSecretToDelete] = useState<Secret | null>(null);
 
   const fetchSecrets = async () => {
     setLoading(true);
@@ -250,7 +252,7 @@ const Secrets: React.FC = () => {
   };
 
   const handleDeleteCategory = async (id: string) => {
-      if (!canDelete) return;
+      if (!canManageCategories) return;
       if(!window.confirm('Are you sure? Secrets in this category will not be deleted but may display as Uncategorized.')) return;
       try {
           await secretService.deleteCustomCategory(id);
@@ -260,17 +262,17 @@ const Secrets: React.FC = () => {
       }
   };
 
-  const initiateDelete = (id: number) => {
-    if (!canDelete) return;
-    setSecretToDelete(id);
+  const initiateDelete = (secret: Secret) => {
+    if (!canDeleteSecret(secret)) return;
+    setSecretToDelete(secret);
     setIsDeleteModalOpen(true);
   };
 
   const confirmDelete = async () => {
-    if (secretToDelete === null) return;
-    if (!canDelete) return;
+    if (!secretToDelete) return;
+    if (!canDeleteSecret(secretToDelete)) return;
     try {
-      await secretService.deleteSecret(secretToDelete);
+      await secretService.deleteSecret(secretToDelete.id);
       fetchSecrets();
     } catch (err) {
       alert('Failed to delete');
@@ -473,8 +475,8 @@ const Secrets: React.FC = () => {
                           <Key className="w-4 h-4" />
                       </button>
                     )}
-                    {canDelete && (
-                      <button onClick={() => initiateDelete(secret.id)} className="text-gray-400 hover:text-red-600 dark:hover:text-red-400" title="Delete">
+                    {canDeleteSecret(secret) && (
+                      <button onClick={() => initiateDelete(secret)} className="text-gray-400 hover:text-red-600 dark:hover:text-red-400" title="Delete">
                           <Trash2 className="w-4 h-4" />
                       </button>
                     )}
@@ -578,7 +580,7 @@ const Secrets: React.FC = () => {
                                       <Tag className="w-4 h-4 text-teal-600 dark:text-teal-400" />
                                       <span className="text-sm text-gray-900 dark:text-white">{cat.label}</span>
                                   </div>
-                                  {canDelete && (
+                                  {canManageCategories && (
                                     <button 
                                       onClick={() => handleDeleteCategory(cat.id)}
                                       className="text-gray-400 hover:text-red-500 transition-colors"

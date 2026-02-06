@@ -1,6 +1,9 @@
 -- Drop and recreate users table with correct schema
 DROP TABLE IF EXISTS secrets CASCADE;
 DROP TABLE IF EXISTS contacts CASCADE;
+DROP TABLE IF EXISTS emergency_contacts CASCADE;
+DROP TABLE IF EXISTS call_logs CASCADE;
+DROP TABLE IF EXISTS sip_accounts CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 
 -- Create users table
@@ -32,6 +35,48 @@ CREATE TABLE contacts (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Create emergency_contacts table
+CREATE TABLE emergency_contacts (
+    id SERIAL PRIMARY KEY,
+    contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    phone VARCHAR(50) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    relationship VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create sip_accounts table
+CREATE TABLE sip_accounts (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    label VARCHAR(100),
+    server_type VARCHAR(50) NOT NULL,
+    server_host VARCHAR(255) NOT NULL,
+    server_port INTEGER NOT NULL DEFAULT 5060,
+    username VARCHAR(100) NOT NULL,
+    password_encrypted TEXT NOT NULL,
+    extension VARCHAR(50),
+    transport VARCHAR(10) NOT NULL DEFAULT 'wss',
+    ws_path VARCHAR(50) NOT NULL DEFAULT '/ws',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create call_logs table
+CREATE TABLE call_logs (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    sip_account_id INTEGER REFERENCES sip_accounts(id) ON DELETE SET NULL,
+    phone_number VARCHAR(50),
+    direction VARCHAR(10) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    duration_seconds INTEGER DEFAULT 0,
+    started_at TIMESTAMP NOT NULL,
+    ended_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create secrets table
 CREATE TABLE secrets (
     id SERIAL PRIMARY KEY,
@@ -49,6 +94,9 @@ CREATE TABLE secrets (
 
 -- Create indexes
 CREATE INDEX idx_contacts_user_id ON contacts(user_id);
+CREATE INDEX idx_emergency_contacts_contact_id ON emergency_contacts(contact_id);
+CREATE INDEX idx_sip_accounts_user_id ON sip_accounts(user_id);
+CREATE INDEX idx_call_logs_contact_id ON call_logs(contact_id);
 CREATE INDEX idx_secrets_user_id ON secrets(user_id);
 CREATE INDEX idx_secrets_category ON secrets(category);
 
@@ -80,6 +128,11 @@ INSERT INTO contacts (user_id, name, phone, address) VALUES
     (1, 'John Wick', '(555) 987-6543', 'Continental Hotel, New York, NY'),
     (1, 'Tony Stark', '(555) 777-8888', '10880 Malibu Point, Malibu, CA'),
     (1, 'Bruce Wayne', '(555) 000-0000', '1007 Mountain Drive, Gotham');
+
+-- Insert sample emergency contacts
+INSERT INTO emergency_contacts (contact_id, name, phone, email, relationship) VALUES
+    (1, 'Mary Doe', '+1-555-0199', 'mary.doe@example.com', 'spouse'),
+    (2, 'Sam Smith', '+1-555-0155', 'sam.smith@example.com', 'parent');
 
 -- Insert sample secrets for admin user
 INSERT INTO secrets (user_id, title, category, username, password, url, notes) VALUES

@@ -31,6 +31,7 @@ export interface Contact {
   address?: string;
   created_at?: string;
   isFavorite?: boolean;
+  emergencyContacts?: EmergencyContact[];
 }
 
 export type SecretCategory = string;
@@ -50,6 +51,7 @@ export interface Secret {
   url?: string;
   notes?: string;
   created_at?: string;
+  user_id?: number;
 }
 
 export interface SecretPayload {
@@ -91,4 +93,73 @@ export interface SharedLink {
 export interface ShareConfig {
   expiresInMinutes: number;
   maxViews: number;
+}
+
+export type SipServerType = 'grandstream' | 'asterisk' | 'freepbx' | 'generic';
+export type SipTransport = 'udp' | 'tcp' | 'tls' | 'wss';
+
+export interface SipAccount {
+  id: number;
+  label?: string | null;
+  server_type: SipServerType;
+  server_host: string;
+  server_port: number;
+  username: string;
+  extension?: string | null;
+  transport: SipTransport;
+  ws_path?: string | null;
+  created_at?: string;
+}
+
+export interface SipAccountPayload {
+  label?: string | null;
+  server_type: SipServerType;
+  server_host: string;
+  server_port?: number;
+  username: string;
+  password?: string;
+  extension?: string | null;
+  transport?: SipTransport;
+  ws_path?: string | null;
+}
+
+export interface CallLog {
+  id: number;
+  user_id: number;
+  contact_id: number;
+  sip_account_id?: number | null;
+  phone_number?: string | null;
+  direction: 'outbound' | 'inbound';
+  status: 'completed' | 'failed' | 'canceled' | 'busy' | 'no_answer';
+  duration_seconds?: number;
+  started_at: string;
+  ended_at?: string | null;
+  created_at?: string;
+}
+
+export type PhoneType = 'work' | 'home' | 'cell';
+
+export type RelationshipType = 'spouse' | 'parent' | 'friend' | 'sibling' | 'doctor' | 'lawyer' | 'other';
+
+export interface PhoneNumber {
+  type: PhoneType;
+  number: string;
+}
+
+export interface EmergencyContact {
+  id: number;
+  name: string;
+  phone: string;
+  email: string;
+  relationship: RelationshipType;
+}
+
+export interface EmployeeContact {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  address?: string;
+  phones: PhoneNumber[];
+  emergencyContacts: EmergencyContact[];
 }

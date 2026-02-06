@@ -117,6 +117,10 @@ const checkPermission = (requiredRole) => {
   };
 };
 
+const isValidEmail = (email) => typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+const isValidPhone = (phone) => typeof phone === 'string' && /^[0-9+().\-\s]{7,20}$/.test(phone);
+const isValidTransport = (transport) => ['udp', 'tcp', 'tls', 'wss'].includes(transport);
+
 // Auth Routes
 app.post('/api/login', async (req, res) => {
   try {
@@ -732,7 +736,29 @@ app.get('/api/contacts', authenticateToken, checkPermission('view'), async (req,
     }
 
     const result = await pool.query(query, params);
-    res.json(result.rows);
+    const contacts = result.rows;
+    if (!contacts.length) {
+      return res.json([]);
+    }
+
+    const contactIds = contacts.map(contact => contact.id);
+    const emergencyResult = await pool.query(
+      'SELECT * FROM emergency_contacts WHERE contact_id = ANY($1::int[]) ORDER BY created_at ASC',
+      [contactIds]
+    );
+
+    const emergencyByContact = emergencyResult.rows.reduce((acc, row) => {
+      if (!acc[row.contact_id]) acc[row.contact_id] = [];
+      acc[row.contact_id].push(row);
+      return acc;
+    }, {});
+
+    const withEmergencyContacts = contacts.map(contact => ({
+      ...contact,
+      emergencyContacts: emergencyByContact[contact.id] || []
+    }));
+
+    res.json(withEmergencyContacts);
   } catch (error) {
     console.error('Get contacts error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -779,6 +805,110 @@ app.put('/api/contacts/:id', authenticateToken, checkPermission('modify'), async
   }
 });
 
+app.post('/api/contacts/:id/emergency-contacts', authenticateToken, checkPermission('modify'), async (req, res) => {
+  try {
+    const contactId = parseInt(req.params.id);
+    if (Number.isNaN(contactId)) {
+      return res.status(400).json({ error: 'Invalid contact id' });
+    }
+
+    const { name, phone, email, relationship } = req.body;
+    if (!name || !phone || !email || !relationship) {
+      return res.status(400).json({ error: 'Name, phone, email, and relationship are required' });
+    }
+    if (!isValidPhone(phone)) {
+      return res.status(400).json({ error: 'Invalid phone number format' });
+    }
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ error: 'Invalid email format' });
+    }
+
+    const contactResult = await pool.query(
+      'SELECT id FROM contacts WHERE id = $1 AND user_id = $2',
+      [contactId, req.user.id]
+    );
+
+    if (contactResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    const insertResult = await pool.query(
+      'INSERT INTO emergency_contacts (contact_id, name, phone, email, relationship) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [contactId, name, phone, email, relationship]
+    );
+
+    res.status(201).json(insertResult.rows[0]);
+  } catch (error) {
+    console.error('Add emergency contact error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.put('/api/contacts/:id/emergency-contacts/:emergencyId', authenticateToken, checkPermission('modify'), async (req, res) => {
+  try {
+    const contactId = parseInt(req.params.id);
+    const emergencyId = parseInt(req.params.emergencyId);
+    if (Number.isNaN(contactId) || Number.isNaN(emergencyId)) {
+      return res.status(400).json({ error: 'Invalid id' });
+    }
+
+    const { name, phone, email, relationship } = req.body;
+    if (!name || !phone || !email || !relationship) {
+      return res.status(400).json({ error: 'Name, phone, email, and relationship are required' });
+    }
+    if (!isValidPhone(phone)) {
+      return res.status(400).json({ error: 'Invalid phone number format' });
+    }
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ error: 'Invalid email format' });
+    }
+
+    const updateResult = await pool.query(
+      `UPDATE emergency_contacts ec
+       SET name = $1, phone = $2, email = $3, relationship = $4
+       FROM contacts c
+       WHERE ec.id = $5 AND ec.contact_id = $6 AND c.id = ec.contact_id AND c.user_id = $7
+       RETURNING ec.*`,
+      [name, phone, email, relationship, emergencyId, contactId, req.user.id]
+    );
+
+    if (updateResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Emergency contact not found' });
+    }
+
+    res.json(updateResult.rows[0]);
+  } catch (error) {
+    console.error('Update emergency contact error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/api/contacts/:id/emergency-contacts/:emergencyId', authenticateToken, checkPermission('modify'), async (req, res) => {
+  try {
+    const contactId = parseInt(req.params.id);
+    const emergencyId = parseInt(req.params.emergencyId);
+    if (Number.isNaN(contactId) || Number.isNaN(emergencyId)) {
+      return res.status(400).json({ error: 'Invalid id' });
+    }
+
+    const result = await pool.query(
+      `DELETE FROM emergency_contacts ec
+       USING contacts c
+       WHERE ec.id = $1 AND ec.contact_id = $2 AND c.id = ec.contact_id AND c.user_id = $3`,
+      [emergencyId, contactId, req.user.id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Emergency contact not found' });
+    }
+
+    res.json({ message: 'Emergency contact deleted' });
+  } catch (error) {
+    console.error('Delete emergency contact error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.delete('/api/contacts/:id', authenticateToken, checkPermission('full-access'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -795,6 +925,182 @@ app.delete('/api/contacts/:id', authenticateToken, checkPermission('full-access'
     res.json({ message: 'Contact deleted' });
   } catch (error) {
     console.error('Delete contact error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// SIP Accounts Routes
+app.get('/api/sip-accounts', authenticateToken, checkPermission('view'), async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, label, server_type, server_host, server_port, username, extension, transport, ws_path, created_at FROM sip_accounts WHERE user_id = $1 ORDER BY created_at DESC',
+      [req.user.id]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Get SIP accounts error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/sip-accounts', authenticateToken, checkPermission('modify'), async (req, res) => {
+  try {
+    const { label, server_type, server_host, server_port, username, password, extension, transport, ws_path } = req.body;
+
+    if (!server_type || !server_host || !username || !password) {
+      return res.status(400).json({ error: 'Server type, host, username, and password are required' });
+    }
+    if (transport && !isValidTransport(transport)) {
+      return res.status(400).json({ error: 'Invalid transport' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO sip_accounts (user_id, label, server_type, server_host, server_port, username, password_encrypted, extension, transport, ws_path)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING id, label, server_type, server_host, server_port, username, extension, transport, ws_path, created_at`,
+      [
+        req.user.id,
+        label || null,
+        server_type,
+        server_host,
+        server_port || 5060,
+        username,
+        password,
+        extension || null,
+        transport || 'wss',
+        ws_path || '/ws'
+      ]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Create SIP account error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.put('/api/sip-accounts/:id', authenticateToken, checkPermission('modify'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { label, server_type, server_host, server_port, username, password, extension, transport, ws_path } = req.body;
+
+    if (!server_type || !server_host || !username) {
+      return res.status(400).json({ error: 'Server type, host, and username are required' });
+    }
+    if (transport && !isValidTransport(transport)) {
+      return res.status(400).json({ error: 'Invalid transport' });
+    }
+
+    const result = await pool.query(
+      `UPDATE sip_accounts
+       SET label = $1, server_type = $2, server_host = $3, server_port = $4, username = $5,
+           password_encrypted = COALESCE($6, password_encrypted), extension = $7, transport = $8, ws_path = $9
+       WHERE id = $10 AND user_id = $11
+       RETURNING id, label, server_type, server_host, server_port, username, extension, transport, ws_path, created_at`,
+      [
+        label || null,
+        server_type,
+        server_host,
+        server_port || 5060,
+        username,
+        password || null,
+        extension || null,
+        transport || 'wss',
+        ws_path || '/ws',
+        id,
+        req.user.id
+      ]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'SIP account not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Update SIP account error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/api/sip-accounts/:id', authenticateToken, checkPermission('modify'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      'DELETE FROM sip_accounts WHERE id = $1 AND user_id = $2',
+      [id, req.user.id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'SIP account not found' });
+    }
+
+    res.json({ message: 'SIP account deleted' });
+  } catch (error) {
+    console.error('Delete SIP account error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Call Logs Routes
+app.post('/api/call-logs', authenticateToken, checkPermission('modify'), async (req, res) => {
+  try {
+    const { contact_id, sip_account_id, phone_number, direction, status, duration_seconds, started_at, ended_at } = req.body;
+    if (!contact_id || !direction || !status || !started_at) {
+      return res.status(400).json({ error: 'Contact, direction, status, and started_at are required' });
+    }
+
+    const contactResult = await pool.query(
+      'SELECT id FROM contacts WHERE id = $1 AND user_id = $2',
+      [contact_id, req.user.id]
+    );
+    if (contactResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO call_logs (user_id, contact_id, sip_account_id, phone_number, direction, status, duration_seconds, started_at, ended_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING *`,
+      [
+        req.user.id,
+        contact_id,
+        sip_account_id || null,
+        phone_number || null,
+        direction,
+        status,
+        duration_seconds || 0,
+        started_at,
+        ended_at || null
+      ]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Create call log error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/contacts/:id/call-logs', authenticateToken, checkPermission('view'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const contactResult = await pool.query(
+      'SELECT id FROM contacts WHERE id = $1 AND user_id = $2',
+      [id, req.user.id]
+    );
+    if (contactResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    const result = await pool.query(
+      'SELECT * FROM call_logs WHERE contact_id = $1 AND user_id = $2 ORDER BY started_at DESC LIMIT 50',
+      [id, req.user.id]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Get call logs error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

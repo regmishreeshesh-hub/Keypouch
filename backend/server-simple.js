@@ -29,6 +29,10 @@ let contacts = [
   { id: 2, user_id: 1, name: 'John Wick', phone: '(555) 987-6543', address: 'Continental Hotel, New York, NY', created_at: new Date().toISOString() }
 ];
 
+let emergencyContacts = [
+  { id: 1, contact_id: 1, name: 'Mary Connor', phone: '(555) 111-2222', email: 'mary.connor@email.com', relationship: 'parent', created_at: new Date().toISOString() }
+];
+
 let secrets = [
   { id: 1, user_id: 1, title: 'Corporate WiFi', category: 'general', notes: 'Guest network password for the 5th floor.', password: 'secure-guest-wifi', created_at: new Date().toISOString() },
   { id: 2, user_id: 1, title: 'AWS Production Access', category: 'api', api_key: 'AKIAJ567890123EXAMPLE', notes: 'Read-only access for dashboard metrics.', created_at: new Date().toISOString() }
@@ -37,6 +41,9 @@ let secrets = [
 let auditLogs = [
   { id: 1, username: 'admin', action: 'SYSTEM_INIT', details: 'System initialized', timestamp: new Date().toISOString(), ip: '127.0.0.1' }
 ];
+
+let sipAccounts = [];
+let callLogs = [];
 
 // Middleware to verify JWT token
 const authenticateToken = (req, res, next) => {
@@ -674,7 +681,20 @@ app.get('/api/contacts', authenticateToken, requirePermission('view'), async (re
       );
     }
 
-    res.json(userContacts);
+    const contactIds = new Set(userContacts.map(c => c.id));
+    const relatedEmergency = emergencyContacts.filter(ec => contactIds.has(ec.contact_id));
+    const emergencyByContact = relatedEmergency.reduce((acc, ec) => {
+      if (!acc[ec.contact_id]) acc[ec.contact_id] = [];
+      acc[ec.contact_id].push(ec);
+      return acc;
+    }, {});
+
+    const withEmergencyContacts = userContacts.map(contact => ({
+      ...contact,
+      emergencyContacts: emergencyByContact[contact.id] || []
+    }));
+
+    res.json(withEmergencyContacts);
   } catch (error) {
     console.error('Get contacts error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -730,6 +750,118 @@ app.put('/api/contacts/:id', authenticateToken, requirePermission('modify'), asy
   }
 });
 
+app.post('/api/contacts/:id/emergency-contacts', authenticateToken, requirePermission('modify'), async (req, res) => {
+  try {
+    const contactId = parseInt(req.params.id);
+    if (Number.isNaN(contactId)) {
+      return res.status(400).json({ error: 'Invalid contact id' });
+    }
+
+    const { name, phone, email, relationship } = req.body;
+    if (!name || !phone || !email || !relationship) {
+      return res.status(400).json({ error: 'Name, phone, email, and relationship are required' });
+    }
+    if (!/^[0-9+().\-\s]{7,20}$/.test(phone)) {
+      return res.status(400).json({ error: 'Invalid phone number format' });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'Invalid email format' });
+    }
+
+    const contact = contacts.find(c => c.id === contactId && c.user_id === req.user.id);
+    if (!contact) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    const newEmergencyContact = {
+      id: emergencyContacts.length + 1,
+      contact_id: contactId,
+      name,
+      phone,
+      email,
+      relationship,
+      created_at: new Date().toISOString()
+    };
+
+    emergencyContacts.push(newEmergencyContact);
+    logActivity(req.user.username, 'EMERGENCY_CONTACT_CREATE', `Added emergency contact for ${contact.name}`);
+    res.status(201).json(newEmergencyContact);
+  } catch (error) {
+    console.error('Add emergency contact error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.put('/api/contacts/:id/emergency-contacts/:emergencyId', authenticateToken, requirePermission('modify'), async (req, res) => {
+  try {
+    const contactId = parseInt(req.params.id);
+    const emergencyId = parseInt(req.params.emergencyId);
+    if (Number.isNaN(contactId) || Number.isNaN(emergencyId)) {
+      return res.status(400).json({ error: 'Invalid id' });
+    }
+
+    const { name, phone, email, relationship } = req.body;
+    if (!name || !phone || !email || !relationship) {
+      return res.status(400).json({ error: 'Name, phone, email, and relationship are required' });
+    }
+    if (!/^[0-9+().\-\s]{7,20}$/.test(phone)) {
+      return res.status(400).json({ error: 'Invalid phone number format' });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'Invalid email format' });
+    }
+
+    const contact = contacts.find(c => c.id === contactId && c.user_id === req.user.id);
+    if (!contact) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    const emergencyIndex = emergencyContacts.findIndex(ec => ec.id === emergencyId && ec.contact_id === contactId);
+    if (emergencyIndex === -1) {
+      return res.status(404).json({ error: 'Emergency contact not found' });
+    }
+
+    emergencyContacts[emergencyIndex] = {
+      ...emergencyContacts[emergencyIndex],
+      name,
+      phone,
+      email,
+      relationship
+    };
+
+    res.json(emergencyContacts[emergencyIndex]);
+  } catch (error) {
+    console.error('Update emergency contact error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/api/contacts/:id/emergency-contacts/:emergencyId', authenticateToken, requirePermission('modify'), async (req, res) => {
+  try {
+    const contactId = parseInt(req.params.id);
+    const emergencyId = parseInt(req.params.emergencyId);
+    if (Number.isNaN(contactId) || Number.isNaN(emergencyId)) {
+      return res.status(400).json({ error: 'Invalid id' });
+    }
+
+    const contact = contacts.find(c => c.id === contactId && c.user_id === req.user.id);
+    if (!contact) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    const emergencyIndex = emergencyContacts.findIndex(ec => ec.id === emergencyId && ec.contact_id === contactId);
+    if (emergencyIndex === -1) {
+      return res.status(404).json({ error: 'Emergency contact not found' });
+    }
+
+    emergencyContacts.splice(emergencyIndex, 1);
+    res.json({ message: 'Emergency contact deleted' });
+  } catch (error) {
+    console.error('Delete emergency contact error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.delete('/api/contacts/:id', authenticateToken, requirePermission('delete'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -749,6 +881,151 @@ app.delete('/api/contacts/:id', authenticateToken, requirePermission('delete'), 
     res.json({ message: 'Contact deleted' });
   } catch (error) {
     console.error('Delete contact error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// SIP Accounts Routes
+app.get('/api/sip-accounts', authenticateToken, requirePermission('view'), async (req, res) => {
+  try {
+    const accounts = sipAccounts.filter(a => a.user_id === req.user.id);
+    res.json(accounts);
+  } catch (error) {
+    console.error('Get SIP accounts error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/sip-accounts', authenticateToken, requirePermission('modify'), async (req, res) => {
+  try {
+    const { label, server_type, server_host, server_port, username, password, extension, transport, ws_path } = req.body;
+    if (!server_type || !server_host || !username || !password) {
+      return res.status(400).json({ error: 'Server type, host, username, and password are required' });
+    }
+
+    const newAccount = {
+      id: sipAccounts.length + 1,
+      user_id: req.user.id,
+      label: label || null,
+      server_type,
+      server_host,
+      server_port: server_port || 5060,
+      username,
+      password_encrypted: password,
+      extension: extension || null,
+      transport: transport || 'wss',
+      ws_path: ws_path || '/ws',
+      created_at: new Date().toISOString()
+    };
+    sipAccounts.push(newAccount);
+    res.status(201).json(newAccount);
+  } catch (error) {
+    console.error('Create SIP account error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.put('/api/sip-accounts/:id', authenticateToken, requirePermission('modify'), async (req, res) => {
+  try {
+    const accountId = parseInt(req.params.id);
+    const { label, server_type, server_host, server_port, username, password, extension, transport, ws_path } = req.body;
+    if (Number.isNaN(accountId)) {
+      return res.status(400).json({ error: 'Invalid id' });
+    }
+    if (!server_type || !server_host || !username) {
+      return res.status(400).json({ error: 'Server type, host, and username are required' });
+    }
+
+    const idx = sipAccounts.findIndex(a => a.id === accountId && a.user_id === req.user.id);
+    if (idx === -1) {
+      return res.status(404).json({ error: 'SIP account not found' });
+    }
+
+    sipAccounts[idx] = {
+      ...sipAccounts[idx],
+      label: label || null,
+      server_type,
+      server_host,
+      server_port: server_port || 5060,
+      username,
+      password_encrypted: password || sipAccounts[idx].password_encrypted,
+      extension: extension || null,
+      transport: transport || 'wss',
+      ws_path: ws_path || '/ws'
+    };
+
+    res.json(sipAccounts[idx]);
+  } catch (error) {
+    console.error('Update SIP account error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/api/sip-accounts/:id', authenticateToken, requirePermission('modify'), async (req, res) => {
+  try {
+    const accountId = parseInt(req.params.id);
+    if (Number.isNaN(accountId)) {
+      return res.status(400).json({ error: 'Invalid id' });
+    }
+    const idx = sipAccounts.findIndex(a => a.id === accountId && a.user_id === req.user.id);
+    if (idx === -1) {
+      return res.status(404).json({ error: 'SIP account not found' });
+    }
+    sipAccounts.splice(idx, 1);
+    res.json({ message: 'SIP account deleted' });
+  } catch (error) {
+    console.error('Delete SIP account error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Call Logs Routes
+app.post('/api/call-logs', authenticateToken, requirePermission('modify'), async (req, res) => {
+  try {
+    const { contact_id, sip_account_id, phone_number, direction, status, duration_seconds, started_at, ended_at } = req.body;
+    if (!contact_id || !direction || !status || !started_at) {
+      return res.status(400).json({ error: 'Contact, direction, status, and started_at are required' });
+    }
+    const contact = contacts.find(c => c.id === contact_id && c.user_id === req.user.id);
+    if (!contact) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    const log = {
+      id: callLogs.length + 1,
+      user_id: req.user.id,
+      contact_id,
+      sip_account_id: sip_account_id || null,
+      phone_number: phone_number || null,
+      direction,
+      status,
+      duration_seconds: duration_seconds || 0,
+      started_at,
+      ended_at: ended_at || null,
+      created_at: new Date().toISOString()
+    };
+    callLogs.push(log);
+    res.status(201).json(log);
+  } catch (error) {
+    console.error('Create call log error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/contacts/:id/call-logs', authenticateToken, requirePermission('view'), async (req, res) => {
+  try {
+    const contactId = parseInt(req.params.id);
+    if (Number.isNaN(contactId)) {
+      return res.status(400).json({ error: 'Invalid id' });
+    }
+    const contact = contacts.find(c => c.id === contactId && c.user_id === req.user.id);
+    if (!contact) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+    const logs = callLogs.filter(l => l.contact_id === contactId && l.user_id === req.user.id);
+    res.json(logs);
+  } catch (error) {
+    console.error('Get call logs error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

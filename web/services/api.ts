@@ -1,6 +1,20 @@
 import { User, Contact, Secret, AuditLog, SharedLink, CustomCategory } from '../types';
 
-export const API_BASE_URL = 'http://localhost:5001/api';
+const resolveApiBaseUrl = () => {
+  const envUrl = import.meta.env?.VITE_API_URL as string | undefined;
+  if (envUrl) {
+    return envUrl.replace(/\/+$/, '');
+  }
+
+  if (typeof window !== 'undefined' && window.location) {
+    const { protocol, hostname } = window.location;
+    return `${protocol}//${hostname}:5001/api`;
+  }
+
+  return 'http://localhost:5001/api';
+};
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 export const request = async (endpoint: string, options: RequestInit = {}): Promise<any> => {
   const url = endpoint.startsWith(API_BASE_URL) ? endpoint : `${API_BASE_URL}${endpoint}`;
