@@ -7,6 +7,9 @@ import Modal from '../components/Modal';
 import { Search, Plus, Edit2, Trash2, Download, Phone, MapPin, User, Loader2, AlertTriangle, Star, Zap, Save, X, Check, Upload, Settings } from 'lucide-react';
 import { canDelete as canDeleteForRole, canModify as canModifyForRole, getRole } from '../utils/permissions';
 import JsSIP from 'jssip';
+import SearchBar from '../components/ui/SearchBar';
+import ImportPreview from '../components/ui/ImportPreview';
+import * as XLSX from 'xlsx';
 
 const Contacts: React.FC = () => {
   const role = getRole();
@@ -41,6 +44,10 @@ const Contacts: React.FC = () => {
     status: 'parsing',
     message: '',
   });
+
+  // Parsed preview state
+  const [parsedContacts, setParsedContacts] = useState<ContactPayload[]>([]);
+  const [showImportPreview, setShowImportPreview] = useState(false);
 
   // Inline Edit State
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -563,69 +570,26 @@ const Contacts: React.FC = () => {
         message: 'Reading file...',
       });
 
-      const text = await file.text();
-      const contacts = parseContactsFile(text, fileExtension);
-      
+      let contacts: ContactPayload[] = [];
+
+      if (fileExtension === 'csv') {
+        const text = await file.text();
+        contacts = parseContactsFileFromCSV(text);
+      } else {
+        // xlsx / xls
+        const ab = await file.arrayBuffer();
+        contacts = parseContactsFileFromExcel(ab);
+      }
+
+      // set preview and allow user to confirm import
+      setParsedContacts(contacts);
+      setShowImportPreview(true);
       setImportProgress(prev => ({
         ...prev,
         total: contacts.length,
-        status: 'uploading',
-        message: `Importing ${contacts.length} contacts...`,
+        status: 'parsing',
+        message: `Ready to import ${contacts.length} contacts. Preview and confirm.`,
       }));
-
-      // Import contacts with progress tracking
-      let successful = 0;
-      let failed = 0;
-      let duplicates = 0;
-
-      for (let i = 0; i < contacts.length; i++) {
-        try {
-          await contactService.createContact(contacts[i]);
-          successful++;
-        } catch (err) {
-          console.error(`Failed to import contact ${i + 1}:`, err);
-          failed++;
-          
-          // Check if it's a duplicate error
-          if (err instanceof Error && err.message.includes('duplicate')) {
-            duplicates++;
-          }
-        }
-
-        // Update progress
-        setImportProgress(prev => ({
-          ...prev,
-          current: i + 1,
-          message: `Importing ${i + 1} of ${contacts.length} contacts...`,
-        }));
-
-        // Small delay to show progress
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-
-      // Complete import
-      setImportProgress({
-        isImporting: false,
-        current: contacts.length,
-        total: contacts.length,
-        status: 'completed',
-        message: 'Import completed!',
-        results: { successful, failed, duplicates }
-      });
-
-      // Refresh contacts and close modal after delay
-      setTimeout(() => {
-        setIsImportModalOpen(false);
-        fetchContacts(searchTerm);
-        setImportProgress({
-          isImporting: false,
-          current: 0,
-          total: 0,
-          status: 'parsing',
-          message: '',
-        });
-      }, 2000);
-
     } catch (err) {
       console.error('Import error:', err);
       setImportProgress({
@@ -638,43 +602,166 @@ const Contacts: React.FC = () => {
     }
   };
 
-  const parseContactsFile = (text: string, fileExtension: string): ContactPayload[] => {
-    const lines = text.split('\n').filter(line => line.trim());
-    
-    if (fileExtension === 'csv') {
-      return parseCSV(lines);
-    } else {
-      // For Excel files, you'd need a library like xlsx
-      // For now, let's try to parse as CSV (Excel files can be saved as CSV)
-      return parseCSV(lines);
-    }
+  const performImport = async (contacts: ContactPayload[]) => {
+      if (!canModify) {
+        setError('View-only access: you cannot import contacts.');
+        return;
+      }
+
+      setImportProgress(prev => ({ ...prev, isImporting: true, status: 'uploading', message: 'Importing...' }));
+
+      let successful = 0;
+      let failed = 0;
+      let duplicates = 0;
+
+      for (let i = 0; i < contacts.length; i++) {
+        try {
+          const created = await contactService.createContact(contacts[i] as any);
+          const createdContactId = created?.contact?.id || created?.id || null;
+
+          if (contacts[i].emergencyContacts && contacts[i].emergencyContacts.length && createdContactId) {
+            for (const ec of contacts[i].emergencyContacts) {
+              try {
+                await contactService.addEmergencyContact(createdContactId, ec as any);
+              } catch (e) {
+                console.error('Failed to add emergency contact for', createdContactId, e);
+              }
+            }
+          }
+
+          successful++;
+        } catch (err: any) {
+          console.error(`Failed to import contact ${i + 1}:`, err);
+          failed++;
+          if (err instanceof Error && err.message.includes('duplicate')) duplicates++;
+        }
+
+        setImportProgress(prev => ({ ...prev, current: i + 1, message: `Importing ${i + 1} of ${contacts.length}...` }));
+        await new Promise(resolve => setTimeout(resolve, 80));
+      }
+
+      setImportProgress({
+        isImporting: false,
+        current: contacts.length,
+        total: contacts.length,
+        status: 'completed',
+        message: 'Import completed!',
+        results: { successful, failed, duplicates }
+      });
+
+      // Clear preview and refresh
+      setTimeout(() => {
+        setShowImportPreview(false);
+        setParsedContacts([]);
+        setIsImportModalOpen(false);
+        fetchContacts(searchTerm);
+        setImportProgress({ isImporting: false, current: 0, total: 0, status: 'parsing', message: '' });
+      }, 1000);
   };
 
-  const parseCSV = (lines: string[]): ContactPayload[] => {
-    const contacts: ContactPayload[] = [];
-    
-    // Skip header if present
-    const startIndex = lines[0]?.toLowerCase().includes('name') ? 1 : 0;
-    
-    for (let i = startIndex; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      
-      // Simple CSV parsing - assumes format: name,phone,address
-      const parts = line.split(',').map(part => part.trim().replace(/^"|"$/g, ''));
-      
-      if (parts.length >= 2) {
-        contacts.push({
-          name: parts[0] || '',
-          phone: parts[1] || '',
-          address: parts[2] || '',
-          isFavorite: false
+  const parseContactsFileFromCSV = (text: string): ContactPayload[] => {
+      const lines = text.split('\n').filter(l => l.trim());
+      if (lines.length === 0) return [];
+
+      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+      const startIndex = headers.includes('name') ? 1 : 0;
+
+      const results: ContactPayload[] = [];
+
+      for (let i = startIndex; i < lines.length; i++) {
+        const row = lines[i];
+        if (!row.trim()) continue;
+        const cols = row.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+        const obj: any = {};
+        headers.forEach((h, idx) => {
+          obj[h] = cols[idx] ?? '';
         });
+
+        const contact: ContactPayload = {
+          name: obj['name'] || obj['full name'] || obj['full_name'] || '',
+          phone: obj['phone'] || obj['phone number'] || obj['phone_number'] || '',
+          address: obj['address'] || '',
+          isFavorite: (obj['favorite'] || obj['isfavorite'] || obj['is_favorite'] || '').toString().toLowerCase() === 'true',
+        };
+
+        // Emergency contacts handling - support emergency_contacts JSON or fields
+        const ecs: any[] = [];
+        if (obj['emergency_contacts']) {
+          try {
+            const parsed = JSON.parse(obj['emergency_contacts']);
+            if (Array.isArray(parsed)) ecs.push(...parsed);
+          } catch (e) {
+            // try semi-colon delimited name|phone|email|relationship entries
+            const parts = obj['emergency_contacts'].split(';').map(s => s.trim()).filter(Boolean);
+            for (const p of parts) {
+              const parts2 = p.split('|').map(s => s.trim());
+              ecs.push({ name: parts2[0] || '', phone: parts2[1] || '', email: parts2[2] || '', relationship: parts2[3] || 'other' });
+            }
+          }
+        } else if (obj['emergency_name'] || obj['emergency_phone']) {
+          ecs.push({ name: obj['emergency_name'] || '', phone: obj['emergency_phone'] || '', email: obj['emergency_email'] || '', relationship: obj['emergency_relationship'] || 'other' });
+        }
+
+        if (ecs.length) contact.emergencyContacts = ecs.map(e => ({
+          name: e.name || '',
+          phone: e.phone || '',
+          email: e.email || '',
+          relationship: (e.relationship || 'other') as any
+        }));
+
+        results.push(contact);
       }
-    }
-    
-    return contacts;
-  };
+
+      return results;
+    };
+
+    const parseContactsFileFromExcel = (arrayBuffer: ArrayBuffer): ContactPayload[] => {
+      try {
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const json: any[] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+        const results: ContactPayload[] = json.map(row => {
+          const contact: ContactPayload = {
+            name: row['name'] || row['Name'] || row['Full Name'] || '',
+            phone: row['phone'] || row['Phone'] || row['Phone Number'] || '',
+            address: row['address'] || row['Address'] || '',
+            isFavorite: (String(row['favorite'] || row['Favorite'] || '')).toLowerCase() === 'true'
+          };
+
+          const ecs: any[] = [];
+          if (row['emergency_contacts']) {
+            if (typeof row['emergency_contacts'] === 'string') {
+              try {
+                const parsed = JSON.parse(row['emergency_contacts']);
+                if (Array.isArray(parsed)) ecs.push(...parsed);
+              } catch (e) {
+                // fallback to semicolon-delimited
+                const parts = String(row['emergency_contacts']).split(';').map(s => s.trim()).filter(Boolean);
+                for (const p of parts) {
+                  const parts2 = p.split('|').map(s => s.trim());
+                  ecs.push({ name: parts2[0] || '', phone: parts2[1] || '', email: parts2[2] || '', relationship: parts2[3] || 'other' });
+                }
+              }
+            } else if (Array.isArray(row['emergency_contacts'])) {
+              ecs.push(...row['emergency_contacts']);
+            }
+          } else if (row['emergency_name'] || row['emergency_phone']) {
+            ecs.push({ name: row['emergency_name'] || '', phone: row['emergency_phone'] || '', email: row['emergency_email'] || '', relationship: row['emergency_relationship'] || 'other' });
+          }
+
+          if (ecs.length) contact.emergencyContacts = ecs.map(e => ({ name: e.name || '', phone: e.phone || '', email: e.email || '', relationship: (e.relationship || 'other') as any }));
+
+          return contact;
+        });
+
+        return results;
+      } catch (e) {
+        console.error('Excel parse error', e);
+        return [];
+      }
+    };
 
   const openAdd = () => {
     if (!canModify) return;
@@ -778,17 +865,8 @@ const Contacts: React.FC = () => {
         </div>
       </div>
 
-      <div className="relative">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          <Search className="h-5 w-5 text-gray-400" />
-        </div>
-        <input
-          type="text"
-          className="block w-full pl-10 pr-3 py-3 border border-gray-300 dark:border-gray-600 rounded-lg leading-5 bg-white dark:bg-gray-800 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 sm:text-sm shadow-sm text-gray-900 dark:text-white"
-          placeholder="Search contacts (e.g. 'Sarah', '555-0199', 'CA Tech')..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
+      <div>
+        <SearchBar value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search contacts (e.g. 'Sarah', '555-0199', 'CA Tech')..." />
       </div>
 
       {loading ? (
@@ -1573,7 +1651,7 @@ const Contacts: React.FC = () => {
         title="Import Contacts"
       >
         <div className="space-y-4">
-          {!importProgress.isImporting ? (
+          {!importProgress.isImporting && !showImportPreview ? (
             // File upload interface
             <>
               <div>
@@ -1613,8 +1691,16 @@ const Contacts: React.FC = () => {
                 <p className="mt-3 text-xs">
                   Expected format: name,phone,address (CSV with headers)
                 </p>
+                <p className="mt-2 text-xs">
+                  You can also include an <code>emergency_contacts</code> JSON column or pipe-delimited emergency entries.
+                </p>
+                <p className="mt-2 text-xs">
+                  Download a template: <a href="/static/import-template.csv" className="text-primary-600">import-template.csv</a>
+                </p>
               </div>
             </>
+          ) : showImportPreview ? (
+            <ImportPreview rows={parsedContacts} onCancel={() => { setShowImportPreview(false); setParsedContacts([]); setImportProgress({ isImporting: false, current: 0, total: 0, status: 'parsing', message: '' }); }} onConfirm={(rows) => performImport(rows)} />
           ) : (
             // Progress and completion interface
             <div className="space-y-4">

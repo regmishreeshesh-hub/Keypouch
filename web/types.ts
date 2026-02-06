@@ -69,6 +69,12 @@ export interface ContactPayload {
   phone: string;
   address?: string;
   isFavorite?: boolean;
+  emergencyContacts?: Array<{
+    name: string;
+    phone: string;
+    email: string;
+    relationship: RelationshipType;
+  }>;
 }
 
 export interface AuditLog {

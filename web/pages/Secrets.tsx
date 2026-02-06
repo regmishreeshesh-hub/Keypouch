@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Secret, SecretPayload, SecretCategory, CustomCategory } from '../types';
 import * as secretService from '../services/secretService';
 import Modal from '../components/Modal';
+import SearchBar from '../components/ui/SearchBar';
+import TagFilter from '../components/ui/TagFilter';
+import AnimatedCopyButton from '../components/ui/AnimatedCopyButton';
 import { Search, Plus, Trash2, Key, Database, Globe, FileText, Copy, Eye, EyeOff, Loader2, Lock, AlertTriangle, Share2, Check, Tag, Settings, X } from 'lucide-react';
 import { can, canManageCategories as canManageCategoriesForRole, canModify as canModifyForRole, canShareSecrets as canShareSecretsForRole, getRole } from '../utils/permissions';
 import { getUserIdFromToken } from '../utils/auth';
@@ -383,44 +386,11 @@ const Secrets: React.FC = () => {
       </div>
 
       <div className="space-y-4">
-        <div className="relative">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <Search className="h-5 w-5 text-gray-400" />
-          </div>
-          <input
-            type="text"
-            className="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg leading-5 bg-white dark:bg-gray-800 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 sm:text-sm text-gray-900 dark:text-white shadow-sm"
-            placeholder="Search secrets by title, username, or notes..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+        <div>
+          <SearchBar value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search secrets by title, username, or notes..." />
         </div>
-        
-        {/* Category Chips */}
-        <div className="flex flex-wrap gap-2">
-            <button
-                onClick={() => setCategoryFilter('')}
-                className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                    categoryFilter === ''
-                    ? 'bg-primary-600 text-white shadow-sm'
-                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
-                }`}
-            >
-                All
-            </button>
-            {allCategories.map(c => (
-                <button
-                    key={c.id}
-                    onClick={() => setCategoryFilter(categoryFilter === c.id ? '' : c.id)}
-                    className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                        categoryFilter === c.id
-                        ? 'bg-primary-600 text-white shadow-sm'
-                        : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
-                    }`}
-                >
-                    {c.label}
-                </button>
-            ))}
+        <div className="pt-3">
+          <TagFilter options={allCategories.map(c => ({ id: c.id, label: c.label }))} selected={categoryFilter} onSelect={(id) => setCategoryFilter(id)} />
         </div>
       </div>
 
@@ -655,12 +625,9 @@ const Secrets: React.FC = () => {
                               value={generatedLink}
                               className="flex-1 min-w-0 block w-full px-3 py-2 rounded-none rounded-l-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-600 text-gray-500 dark:text-gray-200 sm:text-sm"
                            />
-                           <button 
-                              onClick={() => copyToClipboard(generatedLink)}
-                              className="inline-flex items-center px-3 rounded-r-md border border-l-0 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600"
-                           >
-                               <Copy className="h-4 w-4" />
-                           </button>
+                             <div className="inline-flex items-center rounded-r-md border border-l-0 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700">
+                               <AnimatedCopyButton value={generatedLink} />
+                             </div>
                        </div>
                        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                            Anyone with this link can view the secret according to the limits you set.
@@ -696,7 +663,7 @@ const Secrets: React.FC = () => {
                         <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Username</label>
                         <div className="flex justify-between items-center mt-1">
                              <span className="font-mono text-gray-900 dark:text-gray-100">{viewSecretData.username}</span>
-                             <button onClick={() => copyToClipboard(viewSecretData.username)} className="text-gray-400 hover:text-primary-600 dark:hover:text-primary-400"><Copy className="w-4 h-4"/></button>
+                             <AnimatedCopyButton value={viewSecretData.username} />
                         </div>
                     </div>
                 )}
@@ -710,7 +677,7 @@ const Secrets: React.FC = () => {
                                 <button onClick={() => setShowPassword(!showPassword)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                                     {showPassword ? <EyeOff className="w-4 h-4"/> : <Eye className="w-4 h-4"/>}
                                 </button>
-                                <button onClick={() => copyToClipboard(viewSecretData.password)} className="text-gray-400 hover:text-primary-600 dark:hover:text-primary-400"><Copy className="w-4 h-4"/></button>
+                                <AnimatedCopyButton value={viewSecretData.password} />
                              </div>
                         </div>
                     </div>
@@ -725,7 +692,7 @@ const Secrets: React.FC = () => {
                                 <button onClick={() => setShowPassword(!showPassword)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                                     {showPassword ? <EyeOff className="w-4 h-4"/> : <Eye className="w-4 h-4"/>}
                                 </button>
-                                <button onClick={() => copyToClipboard(viewSecretData.api_key)} className="text-gray-400 hover:text-primary-600 dark:hover:text-primary-400"><Copy className="w-4 h-4"/></button>
+                                <AnimatedCopyButton value={viewSecretData.api_key} />
                              </div>
                         </div>
                     </div>

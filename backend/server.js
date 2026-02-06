@@ -765,6 +765,62 @@ app.get('/api/contacts', authenticateToken, checkPermission('view'), async (req,
   }
 });
 
+app.get('/api/contacts/export', authenticateToken, checkPermission('view'), async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM contacts WHERE user_id = $1 ORDER BY created_at DESC',
+      [req.user.id]
+    );
+    const contacts = result.rows;
+
+    // Fetch emergency contacts
+    if (contacts.length === 0) {
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="contacts_${new Date().toISOString().split('T')[0]}.csv"`);
+      res.send('name,phone,address,emergency_contacts\n');
+      return;
+    }
+
+    const contactIds = contacts.map(contact => contact.id);
+    const emergencyResult = await pool.query(
+      'SELECT * FROM emergency_contacts WHERE contact_id = ANY($1::int[]) ORDER BY created_at ASC',
+      [contactIds]
+    );
+
+    const emergencyByContact = emergencyResult.rows.reduce((acc, row) => {
+      if (!acc[row.contact_id]) acc[row.contact_id] = [];
+      acc[row.contact_id].push(row);
+      return acc;
+    }, {});
+
+    // Build CSV
+    const csvHeader = 'name,phone,address,emergency_contacts\n';
+    const csvRows = contacts.map(contact => {
+      const emergency = emergencyByContact[contact.id] || [];
+      const emergencyJson = JSON.stringify(emergency.map(e => ({
+        name: e.name,
+        phone: e.phone,
+        email: e.email,
+        relationship: e.relationship
+      })));
+      const escapedEmergency = `"${emergencyJson.replace(/"/g, '""')}"`;
+      const escapedName = `"${(contact.name || '').replace(/"/g, '""')}"`;
+      const escapedPhone = `"${(contact.phone || '').replace(/"/g, '""')}"`;
+      const escapedAddress = `"${(contact.address || '').replace(/"/g, '""')}"`;
+      return `${escapedName},${escapedPhone},${escapedAddress},${escapedEmergency}`;
+    }).join('\n');
+
+    const csv = csvHeader + csvRows;
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="contacts_${new Date().toISOString().split('T')[0]}.csv"`);
+    res.send(csv);
+  } catch (error) {
+    console.error('Export contacts error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.post('/api/contacts', authenticateToken, checkPermission('modify'), async (req, res) => {
   try {
     const { name, phone, address } = req.body;
