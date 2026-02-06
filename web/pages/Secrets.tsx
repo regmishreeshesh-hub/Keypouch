@@ -345,7 +345,6 @@ const Secrets: React.FC = () => {
   const copyToClipboard = (text?: string) => {
     if (text) {
       navigator.clipboard.writeText(text);
-      alert('Copied to clipboard!');
     }
   };
 
