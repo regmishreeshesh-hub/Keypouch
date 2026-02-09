@@ -11,6 +11,12 @@ const Login: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isCreateDemoOpen, setIsCreateDemoOpen] = useState(false);
+  const [demoUsername, setDemoUsername] = useState('');
+  const [demoPassword, setDemoPassword] = useState('');
+  const [demoError, setDemoError] = useState('');
+  const [demoSuccess, setDemoSuccess] = useState('');
+  const [demoMode, setDemoMode] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
@@ -22,6 +28,41 @@ const Login: React.FC = () => {
       window.history.replaceState({}, document.title);
     }
   }, [location]);
+
+  useEffect(() => {
+    // Check if demo mode is available
+    const checkDemoMode = async () => {
+      try {
+        // Try multiple possible API endpoints
+        const endpoints = [
+          '/api/demo/exists',
+          'http://localhost:5001/api/demo/exists',
+          `${window.location.protocol}//${window.location.hostname}:5001/api/demo/exists`
+        ];
+        
+        for (const endpoint of endpoints) {
+          try {
+            const response = await fetch(endpoint);
+            const data = await response.json();
+            if (data.exists) {
+              setDemoMode(true);
+              console.log('Demo mode available via:', endpoint);
+              return;
+            }
+          } catch (err) {
+            // Try next endpoint
+            continue;
+          }
+        }
+        setDemoMode(false);
+        console.log('Demo mode not available');
+      } catch (error) {
+        console.log('Demo mode check failed:', error);
+        setDemoMode(false);
+      }
+    };
+    checkDemoMode();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,6 +92,9 @@ const Login: React.FC = () => {
       setLoading(false);
     }
   };
+
+  // Only show create demo user if logged in as demo admin
+  const isDemoAdmin = localStorage.getItem('is_demo') === 'true' && localStorage.getItem('role') === 'admin';
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col justify-center py-12 sm:px-6 lg:px-8 transition-colors duration-200">
@@ -162,6 +206,111 @@ const Login: React.FC = () => {
           </form>
         </div>
       </div>
+
+      {demoMode && (
+        <div className="mt-4 sm:mx-auto sm:w-full sm:max-w-md">
+          <div className="bg-white dark:bg-gray-800 py-4 px-4 shadow sm:rounded-lg sm:px-10 border border-gray-100 dark:border-gray-700">
+            <div className="border-t border-gray-200 dark:border-gray-600 pt-4">
+              <div className="text-center">
+                <button
+                  onClick={() => setIsCreateDemoOpen(true)}
+                  className="font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300"
+                  type="button"
+                >
+                  Create User (for personal use)
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Create Demo User Modal */}
+      {isCreateDemoOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg w-full max-w-md mx-4">
+            <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">Create Demo User</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Username
+                </label>
+                <input
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  placeholder="Enter username"
+                  value={demoUsername}
+                  onChange={e => setDemoUsername(e.target.value)}
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Password
+                </label>
+                <input
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  type="password"
+                  placeholder="Enter password"
+                  value={demoPassword}
+                  onChange={e => setDemoPassword(e.target.value)}
+                />
+              </div>
+            </div>
+            
+            {demoError && (
+              <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded">
+                <p className="text-sm text-red-600 dark:text-red-400">{demoError}</p>
+              </div>
+            )}
+            
+            {demoSuccess && (
+              <div className="mt-3 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded">
+                <p className="text-sm text-green-600 dark:text-green-400">{demoSuccess}</p>
+              </div>
+            )}
+            
+            <div className="flex gap-3 mt-6">
+              <button
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded transition-colors"
+                onClick={async () => {
+                  setDemoError(''); 
+                  setDemoSuccess('');
+                  if (!demoUsername || !demoPassword) {
+                    setDemoError('Username and password are required');
+                    return;
+                  }
+                  try {
+                    await authService.createDemoUser(demoUsername, demoPassword);
+                    setDemoSuccess('Demo user created successfully! You can now login.');
+                    setTimeout(() => {
+                      setIsCreateDemoOpen(false);
+                      setDemoUsername('');
+                      setDemoPassword('');
+                    }, 2000);
+                  } catch (err: any) {
+                    setDemoError(err.message || 'Failed to create demo user');
+                  }
+                }}
+              >
+                Create User
+              </button>
+              <button
+                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded transition-colors"
+                onClick={() => {
+                  setIsCreateDemoOpen(false);
+                  setDemoUsername('');
+                  setDemoPassword('');
+                  setDemoError('');
+                  setDemoSuccess('');
+                }}
+                type="button"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

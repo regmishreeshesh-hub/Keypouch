@@ -172,3 +172,55 @@ export const getUserAuditLogs = async (id: number): Promise<AuditLog[]> => {
     headers: getHeaders(),
   });
 };
+
+export const createDemoUser = async (username: string, password: string): Promise<{ message: string }> => {
+  try {
+    // Try multiple possible API endpoints
+    const endpoints = [
+      `${API_BASE_URL}/demo/create-user`,
+      'http://localhost:5001/api/demo/create-user',
+      `${window.location?.protocol}//${window.location?.hostname}:5001/api/demo/create-user`
+    ];
+    
+    for (const endpoint of endpoints) {
+      try {
+        return await request(endpoint, {
+          method: 'POST',
+          body: JSON.stringify({ username, password }),
+        });
+      } catch (err) {
+        // Try next endpoint
+        continue;
+      }
+    }
+    throw new Error('Unable to connect to demo service');
+  } catch (error: any) {
+    throw new Error(error.error || 'Failed to create demo user');
+  }
+};
+
+export const resetDemoPassword = async (username: string, newPassword: string): Promise<{ message: string }> => {
+  try {
+    // Try multiple possible API endpoints
+    const endpoints = [
+      `${API_BASE_URL}/demo/reset-password`,
+      'http://localhost:5001/api/demo/reset-password',
+      `${window.location?.protocol}//${window.location?.hostname}:5001/api/demo/reset-password`
+    ];
+    
+    for (const endpoint of endpoints) {
+      try {
+        return await request(endpoint, {
+          method: 'POST',
+          body: JSON.stringify({ username, newPassword }),
+        });
+      } catch (err) {
+        // Try next endpoint
+        continue;
+      }
+    }
+    throw new Error('Unable to connect to demo service');
+  } catch (error: any) {
+    throw new Error(error.error || 'Failed to reset demo password');
+  }
+};

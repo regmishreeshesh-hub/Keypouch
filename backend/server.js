@@ -1706,6 +1706,111 @@ app.post('/api/admin/recover', async (req, res) => {
   }
 });
 
+// Create additional demo user (for demo admin only)
+app.post('/api/demo/create-user', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required' });
+    }
+    // Only allow if a demo admin exists
+    const demoAdmin = await pool.query('SELECT id FROM users WHERE role = $1 AND is_demo = TRUE', ['admin']);
+    if (demoAdmin.rows.length === 0) {
+      return res.status(403).json({ error: 'Demo admin not found. Only available in demo mode.' });
+    }
+    // Check if username exists
+    const existing = await pool.query('SELECT id FROM users WHERE username = $1', [username]);
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ error: 'Username already exists' });
+    }
+    // Insert demo user with default security question/answer
+    await pool.query(
+      'INSERT INTO users (username, password, role, is_demo, password_changed_at, security_question, security_answer) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5, $6)',
+      [
+        username,
+        password,
+        'view',
+        true,
+        'What is your demo password?',
+        password
+      ]
+    );
+    await logActivity(username, 'DEMO_USER_CREATE', 'Demo user created for personal use', req);
+    res.json({ message: 'Demo user created' });
+  } catch (error) {
+    console.error('Create demo user error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Check if demo admin exists (for showing create user on login)
+app.get('/api/demo/exists', async (req, res) => {
+  try {
+    const demoAdmin = await pool.query('SELECT id FROM users WHERE role = $1 AND is_demo = TRUE', ['admin']);
+    res.json({ exists: demoAdmin.rows.length > 0 });
+  } catch (error) {
+    res.status(500).json({ exists: false });
+  }
+});
+
+// Demo user password recovery (simplified for demo users)
+app.post('/api/demo/reset-password', async (req, res) => {
+  try {
+    const { username, newPassword } = req.body;
+    
+    if (!username || !newPassword) {
+      return res.status(400).json({ error: 'Username and new password are required' });
+    }
+    
+    // Check if user is a demo user
+    const demoUser = await pool.query('SELECT id FROM users WHERE username = $1 AND is_demo = TRUE', [username]);
+    if (demoUser.rows.length === 0) {
+      return res.status(404).json({ error: 'Demo user not found' });
+    }
+    
+    // Update password for demo user
+    await pool.query(
+      'UPDATE users SET password = $1, password_changed_at = CURRENT_TIMESTAMP WHERE username = $2 AND is_demo = TRUE',
+      [newPassword, username]
+    );
+    
+    await logActivity(username, 'DEMO_PASSWORD_RESET', 'Demo user password reset', req);
+    res.json({ message: 'Password reset successfully' });
+  } catch (error) {
+    console.error('Demo password reset error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Demo setup endpoint - creates demo admin if no real admin exists
+app.post('/api/demo/setup', async (req, res) => {
+  try {
+    // Check if real admin already exists
+    const realAdmin = await pool.query('SELECT id FROM users WHERE role = $1 AND is_demo = FALSE', ['admin']);
+    if (realAdmin.rows.length > 0) {
+      return res.status(403).json({ error: 'Real admin already exists' });
+    }
+    
+    // Check if demo admin already exists
+    const demoAdmin = await pool.query('SELECT id FROM users WHERE role = $1 AND is_demo = TRUE', ['admin']);
+    if (demoAdmin.rows.length > 0) {
+      return res.json({ message: 'Demo admin already exists' });
+    }
+    
+    // Create demo admin user
+    await pool.query(
+      'INSERT INTO users (username, password, role, is_demo, security_question, security_answer, password_changed_at) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)',
+      ['admin', 'admin', 'admin', true, 'What is your favorite color?', 'blue']
+    );
+    
+    await logActivity('admin', 'DEMO_ADMIN_CREATE', 'Demo admin user created for demo mode', req);
+    res.json({ message: 'Demo admin created successfully' });
+  } catch (error) {
+    console.error('Demo setup error:', error);
+    res.status(500).json({ error: 'Failed to create demo admin' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

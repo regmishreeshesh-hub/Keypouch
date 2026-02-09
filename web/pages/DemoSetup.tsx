@@ -12,12 +12,76 @@ const DemoSetup: React.FC = () => {
     setError('');
     setSuccess('');
     try {
-      // Call backend to create demo admin user
-      const res = await fetch('/api/demo/setup', { method: 'POST' });
-      if (!res.ok) throw new Error('Failed to create demo admin');
-      setSuccess('Demo admin user created! Redirecting to demo login...');
+      console.log('Starting demo setup...');
+      
+      // Try multiple possible API endpoints
+      const endpoints = [
+        '/api/demo/setup',
+        'http://localhost:5001/api/demo/setup',
+        `${window.location.protocol}//${window.location.hostname}:5001/api/demo/setup`
+      ];
+      
+      let res, responseText, data;
+      
+      for (const endpoint of endpoints) {
+        try {
+          console.log('Trying endpoint:', endpoint);
+          
+          res = await fetch(endpoint, { 
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          console.log('Response status:', res.status, res.statusText);
+          console.log('Response headers:', Object.fromEntries(res.headers.entries()));
+          
+          // Get response text first
+          responseText = await res.text();
+          console.log('Response text:', responseText);
+          console.log('Response text length:', responseText.length);
+          
+          // Check if response is ok
+          if (!res.ok) {
+            console.error('Response not ok:', res.status);
+            throw new Error(responseText || 'Failed to create demo admin');
+          }
+          
+          // Parse JSON
+          try {
+            data = JSON.parse(responseText);
+            console.log('Parsed data:', data);
+            break; // Success, exit loop
+          } catch (jsonError) {
+            console.error('JSON parse error:', jsonError);
+            console.error('Response that failed to parse:', responseText);
+            throw new Error('Invalid response from server');
+          }
+          
+        } catch (err) {
+          console.log('Endpoint failed:', endpoint, err);
+          if (endpoint === endpoints[endpoints.length - 1]) {
+            // Last endpoint failed, throw the error
+            throw err;
+          }
+          // Try next endpoint
+          continue;
+        }
+      }
+      
+      // Handle success cases
+      if (data.message === 'Demo admin already exists') {
+        setSuccess('Demo admin already exists! Redirecting to demo login...');
+      } else if (data.message === 'Demo admin created successfully') {
+        setSuccess('Demo admin user created! Redirecting to demo login...');
+      } else {
+        setSuccess('Demo setup complete! Redirecting to demo login...');
+      }
+      
       setTimeout(() => navigate('/login'), 2000);
     } catch (err: any) {
+      console.error('Demo setup error:', err);
       setError(err.message || 'Demo setup failed');
     } finally {
       setCreating(false);
