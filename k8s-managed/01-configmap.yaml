@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keypouch-config
+  namespace: keypouch
+data:
+  NODE_ENV: "production"
+  PORT: "5001"
+  DB_HOST: "postgres-service"
+  DB_PORT: "5432"
+  DB_NAME: "keypouch"
+  DB_USER: "admin"
+  # These should be updated to your actual domain name or LoadBalancer DNS
+  REACT_APP_API_URL: "https://api.keypouch.yourdomain.com/api"
+  VITE_API_URL: "https://api.keypouch.yourdomain.com/api"
+  FRONTEND_URL: "https://keypouch.yourdomain.com"
+  REACT_APP_APP_NAME: "KeyPouch Pro"
+  CHOKIDAR_USEPOLLING: "false"

@@ -51,7 +51,13 @@ export interface Secret {
   url?: string;
   notes?: string;
   created_at?: string;
+  updated_at?: string;
   user_id?: number;
+  encrypted_content?: string;
+  content_iv?: string;
+  content_auth_tag?: string;
+  version?: number;
+  encryption_algorithm?: string;
 }
 
 export interface SecretPayload {
@@ -62,6 +68,9 @@ export interface SecretPayload {
   api_key?: string;
   url?: string;
   notes?: string;
+  encrypted_content?: string;
+  content_iv?: string;
+  content_auth_tag?: string;
 }
 
 export interface ContactPayload {

@@ -6,11 +6,13 @@ const resolveApiBaseUrl = () => {
     return envUrl.replace(/\/+$/, '');
   }
 
-  if (typeof window !== 'undefined' && window.location) {
-    const { protocol, hostname } = window.location;
-    return `${protocol}//${hostname}:5001/api`;
+  // Fallback to environment variable or default
+  const reactApiUrl = import.meta.env?.REACT_APP_API_URL as string | undefined;
+  if (reactApiUrl) {
+    return reactApiUrl.replace(/\/+$/, '');
   }
 
+  // Default fallback - use localhost for docker-compose setup
   return 'http://localhost:5001/api';
 };
 

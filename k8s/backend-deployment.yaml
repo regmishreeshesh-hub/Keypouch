@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keypouch-backend
+  namespace: keypouch
+  labels:
+    app: keypouch
+    component: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keypouch
+      component: backend
+  template:
+    metadata:
+      labels:
+        app: keypouch
+        component: backend
+    spec:
+      containers:
+      - name: backend
+        image: keypouch/backend:20260208-130259
+        ports:
+        - containerPort: 5001
+        env:
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: keypouch-config
+              key: PORT
+        - name: NODE_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: keypouch-config
+              key: NODE_ENV
+        - name: FRONTEND_URL
+          valueFrom:
+            configMapKeyRef:
+              name: keypouch-config
+              key: FRONTEND_URL
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: keypouch-config
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: keypouch-config
+              key: DB_PORT
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: keypouch-config
+              key: DB_NAME
+        - name: DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: keypouch-config
+              key: DB_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: keypouch-secrets
+              key: DB_PASSWORD
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: keypouch-secrets
+              key: JWT_SECRET
+        livenessProbe:
+          httpGet:
+            path: /api/health/live
+            port: 5001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/health/ready
+            port: 5001
+          initialDelaySeconds: 5
+          periodSeconds: 5

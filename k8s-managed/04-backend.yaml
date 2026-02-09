@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keypouch-backend
+  namespace: keypouch
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      component: backend
+  template:
+    metadata:
+      labels:
+        component: backend
+    spec:
+      containers:
+      - name: backend
+        # Replace with your Docker Registry URL (e.g. gcr.io/my-project/backend:latest)
+        image: backend:latest
+        ports:
+        - containerPort: 5001
+        envFrom:
+        - configMapRef:
+            name: keypouch-config
+        env:
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: keypouch-secrets
+              key: DB_PASSWORD
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: keypouch-secrets
+              key: JWT_SECRET
+        livenessProbe:
+          httpGet:
+            path: /api/health/live
+            port: 5001
+          initialDelaySeconds: 30
+          periodSeconds: 15
+        readinessProbe:
+          httpGet:
+            path: /api/health/ready
+            port: 5001
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keypouch-backend-service
+  namespace: keypouch
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5001
+    targetPort: 5001
+  selector:
+    component: backend

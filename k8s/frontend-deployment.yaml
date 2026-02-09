@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keypouch-frontend
+  namespace: keypouch
+  labels:
+    app: keypouch
+    component: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keypouch
+      component: frontend
+  template:
+    metadata:
+      labels:
+        app: keypouch
+        component: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: keypouch/frontend:20260208-130259
+        ports:
+        - containerPort: 3000
+        env:
+        - name: REACT_APP_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: keypouch-config
+              key: REACT_APP_API_URL
+        - name: VITE_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: keypouch-config
+              key: VITE_API_URL
+        - name: REACT_APP_APP_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: keypouch-config
+              key: REACT_APP_APP_NAME
+        - name: CHOKIDAR_USEPOLLING
+          valueFrom:
+            configMapKeyRef:
+              name: keypouch-config
+              key: CHOKIDAR_USEPOLLING
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5

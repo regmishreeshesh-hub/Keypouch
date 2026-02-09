@@ -44,8 +44,9 @@ A secure secret management system with role-based access control, team collabora
    ```
 
 3. Access the application:
-   - Frontend: http://localhost:3000
+   - Frontend: http://localhost:3002
    - Backend API: http://localhost:5001
+   - Database: localhost:5435
    - Default admin credentials: `admin` / `admin`
 
 ### Manual Setup
@@ -100,12 +101,12 @@ Create `backend/.env` with the following variables:
 
 ```env
 # Database
-DATABASE_URL=postgresql://admin:password@localhost:5432/keypouch
+DATABASE_URL=postgresql://admin:admin@localhost:5432/keypouch
 DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=keypouch
 DB_USER=admin
-DB_PASSWORD=your_secure_password
+DB_PASSWORD=admin
 
 # JWT
 JWT_SECRET=your_very_long_random_secret_key_here
@@ -124,8 +125,7 @@ FRONTEND_URL=http://localhost:3000
 Create `web/.env.local` with the following variables:
 
 ```env
-REACT_APP_API_URL=http://localhost:5001/api
-REACT_APP_APP_NAME=KeyPouch Directory
+VITE_API_URL=http://localhost:5001/api
 ```
 
 ## Deployment

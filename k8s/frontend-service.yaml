@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: keypouch-web-service
+  namespace: keypouch
+  labels:
+    app: keypouch
+    component: frontend
+spec:
+  selector:
+    app: keypouch
+    component: frontend
+  ports:
+  - port: 3002
+    targetPort: 3000
+    protocol: TCP
+  type: LoadBalancer

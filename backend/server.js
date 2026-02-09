@@ -23,6 +23,21 @@ const pool = new Pool({
 // JWT Secret
 const JWT_SECRET = 'your-secret-key-change-in-production';
 
+// Load RSA keys for RS256 signing (for sharing)
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+
+let RS_PRIVATE_KEY, RS_PUBLIC_KEY;
+try {
+  RS_PRIVATE_KEY = fs.readFileSync(path.join(__dirname, 'private.key'), 'utf8');
+  RS_PUBLIC_KEY = fs.readFileSync(path.join(__dirname, 'public.key'), 'utf8');
+  console.log('RSA keys loaded successfully for secure sharing');
+} catch (error) {
+  console.warn('Warning: RSA keys not found. Secure sharing will use fallback (not recommended for production).');
+  // Fallback or handle error
+}
+
 const getClientIp = (req) => {
   const forwarded = req.headers['x-forwarded-for'];
   if (typeof forwarded === 'string' && forwarded.length > 0) {
@@ -33,9 +48,53 @@ const getClientIp = (req) => {
 
 const logActivity = async (username, action, details, req) => {
   try {
+    const transactionId = crypto.randomBytes(16).toString('hex');
+    const ip = req ? getClientIp(req) : '127.0.0.1';
+    const userAgent = req ? req.headers['user-agent'] : 'Internal System';
+
+    // Attempt to get user_id if possible
+    let userId = null;
+    if (req && req.user && req.user.id) {
+      userId = req.user.id;
+    }
+
+    // Hash chain implementation for immutability
+    const prevLogResult = await pool.query('SELECT log_hash FROM audit_logs ORDER BY id DESC LIMIT 1');
+    const previousLogHash = prevLogResult.rows.length > 0 ? prevLogResult.rows[0].log_hash : '0'.repeat(64);
+
+    const detailsStr = typeof details === 'object' ? JSON.stringify(details) : String(details || '');
+
+    const logData = {
+      username,
+      userId,
+      action,
+      details: detailsStr,
+      ip,
+      userAgent,
+      transactionId,
+      previousLogHash,
+      timestamp: new Date().toISOString()
+    };
+
+    const logHash = crypto.createHash('sha256').update(JSON.stringify(logData)).digest('hex');
+
     await pool.query(
-      'INSERT INTO audit_logs (username, action, details, ip) VALUES ($1, $2, $3, $4)',
-      [username, action, details, req ? getClientIp(req) : null]
+      `INSERT INTO audit_logs (
+        username, user_id, action, details, ip, user_agent, transaction_id, status, resource_type, timestamp, log_hash, previous_log_hash
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), $10, $11)`,
+      [
+        username,
+        userId,
+        action,
+        detailsStr,
+        ip,
+        userAgent,
+        transactionId,
+        'success',
+        details?.resourceType || 'system',
+        logHash,
+        previousLogHash
+      ]
     );
   } catch (error) {
     console.error('Audit log error:', error);
@@ -85,34 +144,41 @@ const authenticateToken = async (req, res, next) => {
   }
 };
 
-// Test database connection
-pool.query('SELECT NOW()', (err, res) => {
-  if (err) {
-    console.error('Database connection error:', err);
-  } else {
-    console.log('Database connected successfully at:', res.rows[0].now);
-  }
-});
+// Database connection retry logic
+const connectWithRetry = () => {
+  console.log('Attempting to connect to database...');
+  pool.query('SELECT NOW()', (err, res) => {
+    if (err) {
+      console.error('Database connection error:', err.message);
+      console.log('Retrying in 5 seconds...');
+      setTimeout(connectWithRetry, 5000);
+    } else {
+      console.log('Database connected successfully at:', res.rows[0].now);
+    }
+  });
+};
+
+connectWithRetry();
 
 // Role-based permission middleware
 const checkPermission = (requiredRole) => {
   return (req, res, next) => {
     const userRole = req.user.role;
-    
+
     const roleHierarchy = {
       'view': 1,
       'modify': 2,
       'full-access': 3,
       'admin': 4
     };
-    
+
     const userLevel = roleHierarchy[userRole] || 0;
     const requiredLevel = roleHierarchy[requiredRole] || 0;
-    
+
     if (userLevel < requiredLevel) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
-    
+
     next();
   };
 };
@@ -125,7 +191,7 @@ const isValidTransport = (transport) => ['udp', 'tcp', 'tls', 'wss'].includes(tr
 app.post('/api/login', async (req, res) => {
   try {
     const { username, password } = req.body;
-    
+
     const result = await pool.query(
       'SELECT id, username, password, role, is_disabled, session_version, must_reset_password, is_demo FROM users WHERE username = $1',
       [username]
@@ -137,7 +203,7 @@ app.post('/api/login', async (req, res) => {
     }
 
     const user = result.rows[0];
-    
+
     if (user.is_disabled) {
       await logActivity(user.username, 'LOGIN_BLOCKED', 'Login blocked: account disabled', req);
       return res.status(403).json({ error: 'Account disabled' });
@@ -315,7 +381,7 @@ app.post('/api/me/change-password', authenticateToken, async (req, res) => {
 app.post('/api/register', async (req, res) => {
   try {
     const { username, password, securityQuestion, securityAnswer } = req.body;
-    
+
     // Check if user already exists
     const existingUser = await pool.query(
       'SELECT id FROM users WHERE username = $1',
@@ -358,7 +424,7 @@ app.post('/api/register', async (req, res) => {
 app.post('/api/register-admin', async (req, res) => {
   try {
     const { username, password, securityQuestion, securityAnswer, companyName } = req.body;
-    
+
     // Check if any real admin already exists
     const existingAdmin = await pool.query(
       'SELECT id FROM users WHERE role = $1 AND is_demo = FALSE',
@@ -492,7 +558,7 @@ app.patch('/api/users/:id', authenticateToken, async (req, res) => {
 
     const bumpSessions =
       (is_disabled !== undefined && nextDisabled !== current.is_disabled) ||
-      (must_reset_password !== undefined && nextMustReset !== current.must_reset_password)
+        (must_reset_password !== undefined && nextMustReset !== current.must_reset_password)
         ? 1
         : 0;
 
@@ -1194,7 +1260,7 @@ app.get('/api/secrets/:id', authenticateToken, checkPermission('view'), async (r
     const { id } = req.params;
 
     const result = await pool.query(
-      'SELECT * FROM secrets WHERE id = $1 AND user_id = $2',
+      'SELECT id, user_id, title, category, username, url, notes, encrypted_content, content_iv, content_auth_tag, version, encryption_algorithm, created_at, updated_at FROM secrets WHERE id = $1 AND user_id = $2 AND is_deleted = FALSE',
       [id, req.user.id]
     );
 
@@ -1211,14 +1277,22 @@ app.get('/api/secrets/:id', authenticateToken, checkPermission('view'), async (r
 
 app.post('/api/secrets', authenticateToken, checkPermission('modify'), async (req, res) => {
   try {
-    const { title, category, username, password, api_key, url, notes } = req.body;
+    const { title, category, username, password, api_key, url, notes, encrypted_content, content_iv, content_auth_tag } = req.body;
 
     const result = await pool.query(
-      'INSERT INTO secrets (user_id, title, category, username, password, api_key, url, notes) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
-      [req.user.id, title, category || 'general', username, password, api_key, url, notes]
+      `INSERT INTO secrets (
+        user_id, title, category, username, password, api_key, url, notes, 
+        encrypted_content, content_iv, content_auth_tag
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+      [
+        req.user.id, title, category || 'general', username, password, api_key, url, notes,
+        encrypted_content, content_iv, content_auth_tag
+      ]
     );
 
-    res.status(201).json({ message: 'Secret created' });
+    await logActivity(req.user.username, 'SECRET_CREATED', { secretId: result.rows[0].id, title }, req);
+
+    res.status(201).json({ message: 'Secret created', id: result.rows[0].id });
   } catch (error) {
     console.error('Create secret error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -1228,16 +1302,26 @@ app.post('/api/secrets', authenticateToken, checkPermission('modify'), async (re
 app.put('/api/secrets/:id', authenticateToken, checkPermission('modify'), async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, category, username, password, api_key, url, notes } = req.body;
+    const { title, category, username, password, api_key, url, notes, encrypted_content, content_iv, content_auth_tag } = req.body;
 
     const result = await pool.query(
-      'UPDATE secrets SET title = $1, category = $2, username = $3, password = $4, api_key = $5, url = $6, notes = $7, updated_at = CURRENT_TIMESTAMP WHERE id = $8 AND user_id = $9 RETURNING *',
-      [title, category, username, password, api_key, url, notes, id, req.user.id]
+      `UPDATE secrets SET 
+        title = $1, category = $2, username = $3, password = $4, api_key = $5, url = $6, notes = $7, 
+        encrypted_content = $8, content_iv = $9, content_auth_tag = $10,
+        updated_at = CURRENT_TIMESTAMP, version = version + 1 
+      WHERE id = $11 AND user_id = $12 RETURNING id`,
+      [
+        title, category, username, password, api_key, url, notes,
+        encrypted_content, content_iv, content_auth_tag,
+        id, req.user.id
+      ]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Secret not found' });
     }
+
+    await logActivity(req.user.username, 'SECRET_UPDATED', { secretId: id, title }, req);
 
     res.json({ message: 'Secret updated' });
   } catch (error) {
@@ -1251,17 +1335,233 @@ app.delete('/api/secrets/:id', authenticateToken, checkPermission('full-access')
     const { id } = req.params;
 
     const result = await pool.query(
-      'DELETE FROM secrets WHERE id = $1 AND user_id = $2',
+      'UPDATE secrets SET is_deleted = TRUE, deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND user_id = $2 RETURNING id, title',
       [id, req.user.id]
     );
 
-    if (result.rowCount === 0) {
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Secret not found' });
     }
+
+    await logActivity(req.user.username, 'SECRET_DELETED', { secretId: id, title: result.rows[0].title }, req);
+
+    // Revoke all existing shares for this secret
+    await pool.query(
+      'UPDATE shared_secrets SET is_revoked = TRUE, revoked_at = CURRENT_TIMESTAMP WHERE secret_id = $1',
+      [id]
+    );
 
     res.json({ message: 'Secret deleted' });
   } catch (error) {
     console.error('Delete secret error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// --- SHARING ENDPOINTS ---
+
+app.post('/api/secrets/:id/share', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { expiresInMinutes, maxViews = 1, allowedEmails, encrypted_content, content_iv, content_auth_tag, secretData } = req.body;
+    const userId = req.user.id;
+
+    const secretResult = await pool.query(
+      'SELECT id, user_id, title FROM secrets WHERE id = $1 AND user_id = $2 AND is_deleted = FALSE',
+      [id, userId]
+    );
+
+    if (secretResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Secret not found' });
+    }
+
+    const expiresAt = expiresInMinutes
+      ? new Date(Date.now() + expiresInMinutes * 60000)
+      : null;
+
+    const sharePayload = {
+      secret_id: parseInt(id),
+      created_by: userId,
+      created_at: new Date().toISOString(),
+      expires_at: expiresAt?.toISOString() || null,
+      max_views: maxViews,
+      jti: crypto.randomBytes(16).toString('hex'),
+    };
+
+    const shareToken = jwt.sign(sharePayload, RS_PRIVATE_KEY, {
+      algorithm: 'RS256',
+    });
+
+    // If client sent encrypted data, use it directly
+    // Otherwise, server-side encrypt the data
+    let finalEncryptedContent = encrypted_content;
+    let finalContentIv = content_iv;
+    let finalContentAuthTag = content_auth_tag;
+    
+    if (!encrypted_content && secretData) {
+      // Server-side encryption fallback
+      // Store the secret data as-is (could be encrypted on server in production)
+      // For now, we'll store it as JSON for demo purposes
+      finalEncryptedContent = JSON.stringify(secretData);
+      console.log('[SHARE] Using server-side data storage (no client-side crypto available)');
+    }
+    
+    await pool.query(
+      `INSERT INTO shared_secrets (
+        id, secret_id, created_by, max_views, expires_at, allowed_emails, created_at,
+        encrypted_content, content_iv, content_auth_tag
+      ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8, $9)`,
+      [
+        sharePayload.jti,
+        id,
+        userId,
+        maxViews,
+        expiresAt,
+        allowedEmails ? JSON.stringify(allowedEmails) : null,
+        finalEncryptedContent,
+        finalContentIv,
+        finalContentAuthTag
+      ]
+    );
+
+    await logActivity(req.user.username, 'SECRET_SHARED', {
+      secretId: id,
+      secretTitle: secretResult.rows[0].title,
+      expiresAt,
+      maxViews,
+    }, req);
+
+    res.status(201).json({
+      token: shareToken,
+      expiresAt: expiresAt?.toISOString() || null,
+      maxViews,
+    });
+  } catch (error) {
+    console.error('Create share error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/secrets/:id/audit-log', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { action, details } = req.body;
+
+    const secretResult = await pool.query(
+      'SELECT title FROM secrets WHERE id = $1 AND user_id = $2',
+      [id, req.user.id]
+    );
+
+    if (secretResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Secret not found' });
+    }
+
+    const logDetails = {
+      secretId: id,
+      title: secretResult.rows[0].title,
+      ...details,
+      resourceType: 'secret'
+    };
+
+    await logActivity(req.user.username, `SECRET_${action.toUpperCase()}`, logDetails, req);
+    res.json({ message: 'Action logged' });
+  } catch (error) {
+    console.error('Log secret action error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/shared-secrets/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, RS_PUBLIC_KEY, { algorithms: ['RS256'] });
+    } catch (error) {
+      return res.status(401).json({ error: 'invalid_share_token' });
+    }
+
+    const { secret_id, jti } = decoded;
+
+    const shareResult = await pool.query(
+      `SELECT id, secret_id, created_by, max_views, views_count, 
+              expires_at, is_revoked, destroyed_at,
+              encrypted_content, content_iv, content_auth_tag
+       FROM shared_secrets WHERE id = $1`,
+      [jti]
+    );
+
+    if (shareResult.rows.length === 0 || shareResult.rows[0].destroyed_at || shareResult.rows[0].is_revoked) {
+      return res.status(410).json({ error: 'shared_secret_unavailable' });
+    }
+
+    const share = shareResult.rows[0];
+
+    if (share.expires_at && new Date(share.expires_at) < new Date()) {
+      return res.status(410).json({ error: 'share_expired' });
+    }
+
+    const secretResult = await pool.query(
+      `SELECT id, title, category, username, url
+       FROM secrets WHERE id = $1 AND is_deleted = FALSE`,
+      [secret_id]
+    );
+
+    if (secretResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Secret not found' });
+    }
+
+    const secret = secretResult.rows[0];
+
+    // Atomically increment views and check for destruction
+    await pool.query(
+      'UPDATE shared_secrets SET views_count = views_count + 1, viewed_at = NOW() WHERE id = $1',
+      [jti]
+    );
+
+    if (share.max_views === 1 || (share.views_count + 1 >= share.max_views)) {
+      const destructionHash = crypto.createHash('sha256')
+        .update(JSON.stringify({ share_id: jti, destroyed_at: new Date().toISOString() }))
+        .digest('hex');
+
+      await pool.query(
+        'UPDATE shared_secrets SET destroyed_at = NOW(), destruction_hash = $1 WHERE id = $2',
+        [destructionHash, jti]
+      );
+
+      await logActivity('system', 'SHARED_SECRET_DESTROYED', {
+        shareId: jti,
+        secretId: secret_id,
+        verificationHash: destructionHash,
+      }, req);
+    }
+
+    res.json({
+      title: secret.title,
+      category: secret.category,
+      encrypted_content: share.encrypted_content,
+      content_iv: share.content_iv,
+      content_auth_tag: share.content_auth_tag,
+      username: secret.username,
+      url: secret.url,
+    });
+  } catch (error) {
+    console.error('Get shared secret error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/secrets/:id/shares', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      'SELECT id, max_views, views_count, expires_at, is_revoked, created_at, destroyed_at FROM shared_secrets WHERE secret_id = $1 AND created_by = $2 ORDER BY created_at DESC',
+      [id, req.user.id]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('List shares error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1276,7 +1576,7 @@ app.get('/api/audit-logs', authenticateToken, async (req, res) => {
     const result = await pool.query(
       'SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 200'
     );
-    
+
     res.json(result.rows);
   } catch (error) {
     console.error('Get audit logs error:', error);
@@ -1301,18 +1601,18 @@ app.get('/api/custom-categories', authenticateToken, async (req, res) => {
 app.post('/api/custom-categories', authenticateToken, async (req, res) => {
   try {
     const { label } = req.body;
-    
+
     if (!label || label.trim().length === 0) {
       return res.status(400).json({ error: 'Category label is required' });
     }
 
     const id = label.toLowerCase().replace(/[^a-z0-9]/g, '-');
-    
+
     const result = await pool.query(
       'INSERT INTO custom_categories (id, label, user_id) VALUES ($1, $2, $3) RETURNING id, label, created_at',
       [id, label.trim(), req.user.userId]
     );
-    
+
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error('Create custom category error:', error);
@@ -1327,16 +1627,16 @@ app.post('/api/custom-categories', authenticateToken, async (req, res) => {
 app.delete('/api/custom-categories/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const result = await pool.query(
       'DELETE FROM custom_categories WHERE id = $1 AND user_id = $2',
       [id, req.user.userId]
     );
-    
+
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Category not found' });
     }
-    
+
     res.json({ message: 'Category deleted successfully' });
   } catch (error) {
     console.error('Delete custom category error:', error);

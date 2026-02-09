@@ -88,6 +88,13 @@ CREATE TABLE secrets (
     api_key TEXT,
     url TEXT,
     notes TEXT,
+    encrypted_content TEXT,
+    content_iv VARCHAR(255),
+    content_auth_tag VARCHAR(255),
+    version INTEGER DEFAULT 1,
+    encryption_algorithm VARCHAR(20) DEFAULT 'AES-256-GCM',
+    is_deleted BOOLEAN DEFAULT FALSE,
+    deleted_at TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -157,9 +164,51 @@ INSERT INTO secrets (user_id, title, category, username, password, url, notes) V
 CREATE TABLE audit_logs (
     id SERIAL PRIMARY KEY,
     username VARCHAR(100) NOT NULL,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     action VARCHAR(100) NOT NULL,
     details TEXT,
     ip VARCHAR(45),
+    user_agent TEXT,
+    status VARCHAR(20),
+    resource_type VARCHAR(50),
+    resource_id VARCHAR(100),
+    transaction_id VARCHAR(100),
+    log_hash VARCHAR(64),
+    previous_log_hash VARCHAR(64),
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create Shared Secrets Table
+CREATE TABLE shared_secrets (
+    id VARCHAR(63) PRIMARY KEY,
+    secret_id INTEGER NOT NULL REFERENCES secrets(id) ON DELETE CASCADE,
+    created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    max_views INTEGER DEFAULT 1,
+    views_count INTEGER DEFAULT 0,
+    viewed_at TIMESTAMP NULL,
+    viewed_by_ip VARCHAR(45) NULL,
+    expires_at TIMESTAMP NULL,
+    is_revoked BOOLEAN DEFAULT FALSE,
+    revoked_at TIMESTAMP NULL,
+    encrypted_content TEXT,
+    content_iv VARCHAR(255),
+    content_auth_tag VARCHAR(255),
+    allowed_emails TEXT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    destroyed_at TIMESTAMP NULL,
+    destruction_hash VARCHAR(64) NULL,
+    CONSTRAINT valid_views CHECK (views_count <= max_views OR max_views IS NULL)
+);
+
+-- Create Share Access Logs
+CREATE TABLE share_access_logs (
+    id SERIAL PRIMARY KEY,
+    share_id VARCHAR(63) REFERENCES shared_secrets(id) ON DELETE CASCADE,
+    accessed_from_ip VARCHAR(45),
+    user_agent TEXT,
+    access_status VARCHAR(20),
+    view_number INTEGER,
+    max_views_allowed INTEGER,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -1,753 +1,600 @@
 import React, { useState, useEffect } from 'react';
-import { Secret, SecretPayload, SecretCategory, CustomCategory } from '../types';
+import { Secret, SecretPayload, CustomCategory } from '../types';
 import * as secretService from '../services/secretService';
+import * as encryptionService from '../services/encryptionService';
 import Modal from '../components/Modal';
-import SearchBar from '../components/ui/SearchBar';
-import TagFilter from '../components/ui/TagFilter';
-import AnimatedCopyButton from '../components/ui/AnimatedCopyButton';
-import { Search, Plus, Trash2, Key, Database, Globe, FileText, Copy, Eye, EyeOff, Loader2, Lock, AlertTriangle, Share2, Check, Tag, Settings, X } from 'lucide-react';
-import { can, canManageCategories as canManageCategoriesForRole, canModify as canModifyForRole, canShareSecrets as canShareSecretsForRole, getRole } from '../utils/permissions';
-import { getUserIdFromToken } from '../utils/auth';
+import SharingModal from '../components/SharingModal';
+import { Search, Plus, Trash2, Key, Database, Globe, FileText, Loader2, Lock, ShieldCheck, Server, Layers, X, Share2, Copy, Check, Eye, EyeOff, Edit, ShieldAlert } from 'lucide-react';
 
-const DEFAULT_CATEGORIES = [
-  { id: 'general', label: 'General', icon: FileText, color: 'bg-orange-100 text-orange-800', darkColor: 'dark:bg-orange-900/50 dark:text-orange-200' },
-  { id: 'password', label: 'Password', icon: Lock, color: 'bg-blue-100 text-blue-800', darkColor: 'dark:bg-blue-900/50 dark:text-blue-200' },
-  { id: 'api', label: 'API Key', icon: Key, color: 'bg-purple-100 text-purple-800', darkColor: 'dark:bg-purple-900/50 dark:text-purple-200' },
-  { id: 'database', label: 'Database', icon: Database, color: 'bg-green-100 text-green-800', darkColor: 'dark:bg-green-900/50 dark:text-green-200' },
+const SECRET_TYPES = [
+  { id: 'api_key', label: 'API Key / Token' },
+  { id: 'password', label: 'Password' },
+  { id: 'db_credentials', label: 'Database Credentials' },
+  { id: 'ssl_cert', label: 'SSL Certificate' },
+  { id: 'oauth_token', label: 'OAuth Token' },
+  { id: 'ssh_key', label: 'SSH Key' },
+  { id: 'private_key', label: 'Private Key' },
+  { id: 'webhook', label: 'Webhook URL' },
+  { id: 'general', label: 'General' },
 ];
 
-const SECRET_TYPE_CONFIGS = {
-  'personal_access_token': {
-    label: 'Personal Access Token',
-    fields: ['title', 'token', 'notes'],
-    optionalFields: ['expiration_date', 'environment_tags'],
-    metadata: { expiration_date: true, environment_tags: true, access_scope: false },
-    validation: {
-      pat_token: { pattern: /^[a-zA-Z0-9_\-\.]{20,}$/, message: 'Invalid Personal Access Token format' }
-    },
-    placeholders: {
-      token: 'pat_xxxxx',
-      notes: 'Personal Access Token with specific permissions and scope (e.g., GitHub PAT, DigitalOcean PAT, GitLab PAT)'
-    }
-  },
-  'api_token': {
-    label: 'API Token',
-    fields: ['title', 'token', 'notes'],
-    optionalFields: ['expiration_date', 'environment_tags'],
-    metadata: { expiration_date: true, environment_tags: true, access_scope: false },
-    validation: {
-      api_token: { pattern: /^[a-zA-Z0-9_\-\.]{20,}$/, message: 'Invalid API Token format' }
-    },
-    placeholders: {
-      token: 'api_token_xxxxx',
-      notes: 'API Token for service authentication (e.g., OpenAI API, Stripe API, AWS API Key)'
-    }
-  },
-  'password': {
-    label: 'Password',
-    fields: ['title', 'username', 'password', 'url', 'notes'],
-    optionalFields: ['expiration_date', 'environment_tags'],
-    metadata: { expiration_date: true, environment_tags: true, access_scope: false },
-    validation: {
-      password: { required: true, message: 'Password is required' }
-    },
-    placeholders: {
-      password: 'enter-secure-password',
-      url: 'e.g., https://example.com',
-      notes: 'Add any additional context or usage instructions'
-    }
-  },
-  'database': {
-    label: 'Database Connection',
-    fields: ['title', 'connection_string', 'notes'],
-    optionalFields: ['expiration_date', 'environment_tags'],
-    metadata: { expiration_date: true, environment_tags: true, access_scope: false },
-    validation: {
-      connection_string: { required: true, message: 'Connection string is required' }
-    },
-    placeholders: {
-      connection_string: 'e.g., mongodb://user:pass@host:port/db',
-      notes: 'Database type, connection parameters, etc.'
-    }
-  },
-  'private_key': {
-    label: 'Private Key',
-    fields: ['title', 'key_data', 'notes'],
-    optionalFields: ['expiration_date', 'access_scope'],
-    metadata: { expiration_date: true, environment_tags: false, access_scope: true },
-    validation: {
-      key_data: { pattern: /^-----BEGIN.*PRIVATE KEY-----/, message: 'Invalid private key format' }
-    },
-    placeholders: {
-      key_data: '-----BEGIN PRIVATE KEY-----\n...',
-      notes: 'PEM format private key content'
-    }
-  },
-  'aws_credentials': {
-    label: 'AWS Credentials',
-    fields: ['title', 'access_key_id', 'secret_access_key', 'region', 'notes'],
-    optionalFields: ['expiration_date', 'environment_tags', 'access_scope'],
-    metadata: { expiration_date: true, environment_tags: true, access_scope: true },
-    validation: {
-      access_key_id: { pattern: /^[A-Z0-9]{20}$/, message: 'Invalid AWS Access Key ID format' },
-      secret_access_key: { pattern: /^[a-zA-Z0-9\/+]{40}$/, message: 'Invalid AWS Secret Access Key format' }
-    },
-    placeholders: {
-      access_key_id: 'AKIAJxxxxx',
-      secret_access_key: 'xxxxx',
-      region: 'e.g., us-east-1, eu-west-2',
-      notes: 'IAM permissions, associated services, etc.'
-    }
-  },
-  'encryption_key': {
-    label: 'Encryption Key',
-    fields: ['title', 'key_value', 'algorithm', 'notes'],
-    optionalFields: ['expiration_date', 'environment_tags'],
-    metadata: { expiration_date: true, environment_tags: true, access_scope: false },
-    validation: {
-      key_value: { required: true, message: 'Key value is required' }
-    },
-    placeholders: {
-      key_value: 'base64-encoded-key-value',
-      algorithm: 'e.g., AES-256, RSA-2048',
-      notes: 'Encryption algorithm and key size'
-    }
-  },
-  'github_token': {
-    label: 'GitHub Token',
-    fields: ['title', 'token', 'username', 'notes'],
-    optionalFields: ['expiration_date', 'environment_tags'],
-    metadata: { expiration_date: true, environment_tags: true, access_scope: false },
-    validation: {
-      token: { pattern: /^ghp_[a-zA-Z0-9]{36}$/, message: 'Invalid GitHub personal access token format' }
-    },
-    placeholders: {
-      token: 'ghp_xxxxx',
-      username: 'GitHub username',
-      notes: 'Repository permissions, token scope, etc.'
-    }
-  },
-  'gitlab_token': {
-    label: 'GitLab Token',
-    fields: ['title', 'token', 'instance_url', 'notes'],
-    optionalFields: ['expiration_date', 'environment_tags'],
-    metadata: { expiration_date: true, environment_tags: true, access_scope: false },
-    validation: {
-      token: { pattern: /^glpat-[a-zA-Z0-9\-_]{20}$/, message: 'Invalid GitLab personal access token format' }
-    },
-    placeholders: {
-      token: 'glpat_xxxxx',
-      instance_url: 'e.g., https://gitlab.com',
-      notes: 'Project permissions, token scope, etc.'
-    }
-  }
-};
+const DEFAULT_CATEGORIES = [
+  { id: 'api_key', label: 'API Key / Token' },
+  { id: 'password', label: 'Password' },
+  { id: 'db_credentials', label: 'Database Credentials' },
+  { id: 'ssl_cert', label: 'SSL Certificate' },
+  { id: 'oauth_token', label: 'OAuth Token' },
+  { id: 'ssh_key', label: 'SSH Key' },
+  { id: 'private_key', label: 'Private Key' },
+  { id: 'webhook', label: 'Webhook URL' },
+  { id: 'general', label: 'General' },
+];
 
 const Secrets: React.FC = () => {
-  const role = getRole();
-  const currentUserId = getUserIdFromToken();
-  const canModify = canModifyForRole(role);
-  const canManageCategories = canManageCategoriesForRole(role);
-  const canShare = canShareSecretsForRole(role);
-  const canDeleteSecret = (secret?: Secret) => can(role, 'secrets', 'delete', { isOwner: secret?.user_id === currentUserId });
-
   const [secrets, setSecrets] = useState<Secret[]>([]);
-  const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [currentSecret, setCurrentSecret] = useState<Partial<Secret>>({});
-  const [viewSecretData, setViewSecretData] = useState<Secret | null>(null);
-  const [showPassword, setShowPassword] = useState(false);
-
-  // Category Management State
-  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [categoryLoading, setCategoryLoading] = useState(false);
-
-  // Share Modal State
-  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
-  const [shareConfig, setShareConfig] = useState({ expiresInMinutes: 60, maxViews: 1 });
-  const [generatedLink, setGeneratedLink] = useState('');
-  const [sharingLoading, setSharingLoading] = useState(false);
-
-  // Delete Confirmation State
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [secretToDelete, setSecretToDelete] = useState<Secret | null>(null);
+  const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [newCategoryLabel, setNewCategoryLabel] = useState('');
 
   const fetchSecrets = async () => {
     setLoading(true);
     try {
-      const data = await secretService.getSecrets(searchTerm, categoryFilter);
-      setSecrets(data);
-    } catch (err) {
-      console.error(err);
+      const data = await secretService.getSecrets();
+      const masterKey = await encryptionService.getMasterKey();
+
+      if (masterKey) {
+        const decryptedSecrets = await Promise.all(data.map(async (s) => {
+          if (s.encrypted_content) {
+            try {
+              const decrypted = await encryptionService.decrypt(s.encrypted_content, s.content_iv!, s.content_auth_tag!, masterKey);
+              if (decrypted) {
+                const content = JSON.parse(decrypted);
+                return { ...s, ...content };
+              }
+              return s;
+            } catch (e) {
+              console.error('Failed to decrypt secret', s.id, e);
+              return s;
+            }
+          }
+          return s;
+        }));
+        setSecrets(decryptedSecrets);
+      } else {
+        setSecrets(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch secrets:', error);
+      setSecrets([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchCategories = async () => {
-      try {
-          const cats = await secretService.getCustomCategories();
-          setCustomCategories(cats);
-      } catch (e) {
-          console.error('Failed to load categories');
-      }
+
+  const fetchCustomCategories = async () => {
+    try {
+      const data = await secretService.getCustomCategories();
+      setCustomCategories(data);
+    } catch (err) { console.error('Failed to fetch custom categories:', err); }
   };
 
-  useEffect(() => {
-    fetchCategories();
-  }, []);
+  const handleAddCategory = async () => {
+    if (!newCategoryLabel.trim()) {
+      alert('Category name cannot be empty');
+      return;
+    }
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchSecrets();
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchTerm, categoryFilter]);
-
-  // Combine default and custom categories
-  const allCategories = [
-      ...DEFAULT_CATEGORIES,
-      ...customCategories.map(c => ({
-          id: c.id,
-          label: c.label,
-          icon: Tag,
-          color: 'bg-teal-100 text-teal-800',
-          darkColor: 'dark:bg-teal-900/50 dark:text-teal-200'
-      }))
-  ];
-
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!canModify) return;
     try {
-      const payload = currentSecret as SecretPayload;
-      if (currentSecret.id) {
-        await secretService.updateSecret(currentSecret.id, payload);
-      } else {
-        await secretService.createSecret(payload);
-      }
-      setIsEditModalOpen(false);
-      fetchSecrets();
-    } catch (err) {
-      alert('Failed to save secret');
+      const newCategory = await secretService.createCustomCategory(newCategoryLabel);
+      setCustomCategories([...customCategories, newCategory]);
+      setNewCategoryLabel('');
+      setIsAddingCategory(false);
+      alert('Category created successfully');
+    } catch (err: any) {
+      alert(err.message || 'Failed to create category');
     }
   };
 
-  const handleAddCategory = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!canManageCategories) return;
-      if (!newCategoryName.trim()) return;
-      setCategoryLoading(true);
-      try {
-          await secretService.createCustomCategory(newCategoryName);
-          setNewCategoryName('');
-          fetchCategories();
-      } catch(e: any) {
-          alert(e.error || 'Failed to add category');
-      } finally {
-          setCategoryLoading(false);
-      }
+  useEffect(() => {
+    fetchSecrets();
+    fetchCustomCategories();
+  }, []);
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const masterKey = await encryptionService.getMasterKey();
+      if (!masterKey) throw new Error('Master key not found. Please re-login.');
+
+      const secretData = {
+        username: currentSecret.username,
+        password: currentSecret.password,
+        api_key: currentSecret.api_key,
+        notes: currentSecret.notes,
+      };
+
+      const encrypted = await encryptionService.encrypt(JSON.stringify(secretData), masterKey);
+      if (!encrypted) throw new Error('Encryption failed. Please try again.');
+
+      const payload = {
+        title: currentSecret.title,
+        category: currentSecret.category,
+        url: formatUrl(currentSecret.url),
+        encrypted_content: encrypted.encrypted,
+        content_iv: encrypted.iv,
+        content_auth_tag: encrypted.authTag,
+      } as any;
+
+      if (currentSecret.id) await secretService.updateSecret(currentSecret.id, payload);
+      else await secretService.createSecret(payload);
+
+      setIsEditModalOpen(false);
+      fetchSecrets();
+    } catch (err: any) {
+      alert(err.message || 'Failed to save');
+    }
   };
 
-  const handleDeleteCategory = async (id: string) => {
-      if (!canManageCategories) return;
-      if(!window.confirm('Are you sure? Secrets in this category will not be deleted but may display as Uncategorized.')) return;
-      try {
-          await secretService.deleteCustomCategory(id);
-          fetchCategories();
-      } catch(e) {
-          alert('Failed to delete category');
-      }
+  const openAdd = () => {
+    setCurrentSecret({
+      title: '',
+      category: 'general',
+      url: '',
+      username: '',
+      password: '',
+      api_key: '',
+      notes: ''
+    });
+    setIsAddingCategory(false);
+    setNewCategoryLabel('');
+    setIsEditModalOpen(true);
   };
 
-  const initiateDelete = (secret: Secret) => {
-    if (!canDeleteSecret(secret)) return;
-    setSecretToDelete(secret);
+  const formatUrl = (url: string | undefined): string => {
+    if (!url) return '';
+    let trimmed = url.trim();
+    if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+      return `https://${trimmed}`;
+    }
+    return trimmed;
+  };
+
+  const handleUrlBlur = () => {
+    const formatted = formatUrl(currentSecret.url);
+    if (formatted !== currentSecret.url) {
+      setCurrentSecret(prev => ({ ...prev, url: formatted }));
+    }
+  };
+
+  const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value;
+    // Auto-prepend https:// if they start with www.
+    if (value.toLowerCase().startsWith('www.') && !value.toLowerCase().startsWith('http')) {
+      value = 'https://' + value;
+    }
+    setCurrentSecret(prev => ({ ...prev, url: value }));
+  };
+
+  const [isSharingModalOpen, setIsSharingModalOpen] = useState(false);
+  const [currentShareSecret, setCurrentShareSecret] = useState<{ id: number; title: string; decryptedData: any } | null>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [secretToDelete, setSecretToDelete] = useState<{ id: number; title: string } | null>(null);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [copyStatus, setCopyStatus] = useState<string | null>(null);
+  const [visiblePasswordId, setVisiblePasswordId] = useState<number | null>(null);
+
+  const handleShareClick = (secret: Secret) => {
+    setCurrentShareSecret({
+      id: secret.id,
+      title: secret.title,
+      decryptedData: {
+        username: secret.username,
+        password: secret.password,
+        api_key: secret.api_key,
+        notes: secret.notes,
+        url: secret.url,
+      }
+    });
+    setIsSharingModalOpen(true);
+  };
+
+  const copyToClipboard = async (text: string, secretId: number, fieldName?: string) => {
+    let copySuccessful = false;
+    try {
+      // Fallback for non-secure contexts (http://<ip>)
+      if (!navigator.clipboard) {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        textArea.style.top = "-999999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+          copySuccessful = document.execCommand('copy');
+          textArea.remove();
+        } catch (err) {
+          console.error('Fallback copy failed', err);
+          textArea.remove();
+        }
+      } else {
+        await navigator.clipboard.writeText(text);
+        copySuccessful = true;
+      }
+
+      if (copySuccessful) {
+        setCopiedId(secretId);
+        setCopyStatus(fieldName || 'Copied');
+        setTimeout(() => {
+          setCopiedId(null);
+          setCopyStatus(null);
+        }, 2000);
+
+        // Clear clipboard after 60s
+        setTimeout(() => {
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText('');
+          }
+        }, 60000);
+
+        // Log action (without content) - don't await to avoid blocking UI if logging fails
+        secretService.logSecretAction('copy', secretId, { field: fieldName }).catch(console.error);
+      } else {
+        throw new Error('Copy command failed');
+      }
+    } catch (err) {
+      console.error('Failed to copy!', err);
+      alert('Copy failed. Your browser might be blocking clipboard access on this insecure connection (HTTP). Please try using HTTPS or copy manually.');
+    }
+  };
+
+
+  const handleDeleteClick = (id: number, title: string) => {
+    setSecretToDelete({ id, title });
     setIsDeleteModalOpen(true);
   };
 
   const confirmDelete = async () => {
     if (!secretToDelete) return;
-    if (!canDeleteSecret(secretToDelete)) return;
     try {
       await secretService.deleteSecret(secretToDelete.id);
+      setIsDeleteModalOpen(false);
+      setSecretToDelete(null);
       fetchSecrets();
     } catch (err) {
-      alert('Failed to delete');
-    } finally {
-        setIsDeleteModalOpen(false);
-        setSecretToDelete(null);
+      alert('Failed to delete secret');
     }
   };
 
-  const handleView = async (id: number) => {
-    try {
-      const data = await secretService.getSecretDetails(id);
-      setViewSecretData(data);
-      setShowPassword(false);
-      setIsViewModalOpen(true);
-    } catch (err) {
-      alert('Could not fetch details');
-    }
-  };
-
-  const openAdd = () => {
-    if (!canModify) return;
-    setCurrentSecret({ title: '', category: 'general', notes: '' });
+  const openEdit = (secret: Secret) => {
+    setCurrentSecret(secret);
     setIsEditModalOpen(true);
-  };
-
-  const openEdit = async (id: number) => {
-      if (!canModify) return;
-      try {
-        const data = await secretService.getSecretDetails(id);
-        setCurrentSecret(data);
-        setIsEditModalOpen(true);
-      } catch(e) {
-          console.error(e);
-      }
-  }
-
-  const openShare = async (id: number) => {
-      if (!canShare) return;
-      // Fetch details first to ensure it exists
-      try {
-          const data = await secretService.getSecretDetails(id);
-          setCurrentSecret(data); // Set current secret for context
-          setGeneratedLink(''); // Reset previous link
-          setShareConfig({ expiresInMinutes: 60, maxViews: 1 }); // Reset defaults
-          setIsShareModalOpen(true);
-      } catch (e) {
-          console.error(e);
-          alert('Error preparing share');
-      }
-  }
-
-  const generateShareLink = async () => {
-      if (!currentSecret.id) return;
-      if (!canShare) return;
-      setSharingLoading(true);
-      try {
-          const result = await secretService.createShareLink(currentSecret.id, shareConfig);
-          setGeneratedLink(result.link);
-      } catch(e) {
-          alert('Failed to generate link');
-      } finally {
-          setSharingLoading(false);
-      }
-  }
-
-  const copyToClipboard = (text?: string) => {
-    if (text) {
-      navigator.clipboard.writeText(text);
-    }
-  };
-
-  const getCategoryMeta = (cat: string) => {
-      const found = allCategories.find(c => c.id === cat);
-      if (found) return found;
-      // Fallback for deleted or unknown categories
-      return { id: cat, label: cat || 'Unknown', icon: Tag, color: 'bg-gray-100 text-gray-800', darkColor: 'dark:bg-gray-700 dark:text-gray-300' };
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Secrets</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Securely store passwords, API keys, and notes.</p>
+          <h1 className="text-2xl font-bold dark:text-white">Vault</h1>
+          <p className="text-xs text-gray-500 flex items-center gap-1.5 mt-1">
+            <ShieldCheck className="w-3.5 h-3.5 text-green-500" />
+            Zero-Knowledge AES-256 Protection Active
+          </p>
         </div>
-        <div className="flex gap-2 w-full sm:w-auto">
-            {canManageCategories && (
-              <button
-              onClick={() => setIsCategoryModalOpen(true)}
-              className="flex-1 sm:flex-none inline-flex items-center justify-center px-4 py-2 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-              >
-              <Settings className="w-4 h-4 mr-2" />
-              Manage Categories
-              </button>
-            )}
-            {canModify && (
-              <button
-              onClick={openAdd}
-              className="flex-1 sm:flex-none inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-              >
-              <Plus className="w-4 h-4 mr-2" />
-              Add Secret
-              </button>
-            )}
-        </div>
+        <button onClick={openAdd} className="bg-primary-600 text-white px-4 py-2 rounded-md flex items-center gap-2 hover:bg-primary-700 transition-colors shadow-sm">
+          <Plus className="w-4 h-4" /> Add Secret
+        </button>
       </div>
 
-      <div className="space-y-4">
-        <div>
-          <SearchBar value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search secrets by title, username, or notes..." />
-        </div>
-        <div className="pt-3">
-          <TagFilter options={allCategories.map(c => ({ id: c.id, label: c.label }))} selected={categoryFilter} onSelect={(id) => setCategoryFilter(id)} />
-        </div>
-      </div>
-
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
-        </div>
-      ) : secrets.length === 0 ? (
-        <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-lg border border-dashed border-gray-300 dark:border-gray-700">
-           <Lock className="mx-auto h-12 w-12 text-gray-400" />
-           <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">No secrets stored</h3>
-           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Keep your sensitive data safe here.</p>
-        </div>
-      ) : (
+      {loading ? <div className="flex justify-center p-12"><Loader2 className="animate-spin w-8 h-8 text-primary-600" /></div> : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {secrets.map((secret) => {
-            const meta = getCategoryMeta(secret.category);
-            const Icon = meta.icon;
-            return (
-              <div key={secret.id} className="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow duration-200 border border-gray-100 dark:border-gray-700 flex flex-col">
-                <div className="p-5 flex-1">
-                  <div className="flex items-center">
-                    <div className={`flex-shrink-0 rounded-md p-3 ${meta.color} ${meta.darkColor}`}>
-                      <Icon className="h-6 w-6" />
-                    </div>
-                    <div className="ml-5 w-0 flex-1">
-                      <dl>
-                        <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">{meta.label}</dt>
-                        <dd>
-                          <div className="text-lg font-medium text-gray-900 dark:text-white truncate" title={secret.title}>{secret.title}</div>
-                        </dd>
-                      </dl>
-                    </div>
+          {secrets.length === 0 && (
+            <div className="col-span-full py-12 text-center bg-white dark:bg-gray-800 rounded-xl border border-dashed border-gray-300 dark:border-gray-700">
+              <Lock className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-500 dark:text-gray-400">No secrets found in your vault.</p>
+            </div>
+          )}
+          {secrets.map(secret => (
+            <div key={secret.id} className="bg-white dark:bg-gray-800 p-5 rounded-xl border dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-primary-100 dark:bg-primary-900/30 rounded-lg">
+                    <Lock className="w-4 h-4 text-primary-600 dark:text-primary-400" />
                   </div>
-                  <div className="mt-4">
-                      {secret.username && <p className="text-sm text-gray-600 dark:text-gray-300 flex items-center gap-1 mb-1"><span className="font-semibold">User:</span> {secret.username}</p>}
-                      {secret.url && <a href={secret.url} target="_blank" rel="noreferrer" className="text-sm text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-1 truncate"><Globe className="w-3 h-3"/> {secret.url}</a>}
+                  <div>
+                    <h3 className="font-bold dark:text-white truncate max-w-[150px]">{secret.title}</h3>
+                    <div className="flex items-center gap-1 text-gray-400">
+                      <span className="text-[10px] uppercase font-semibold">{secret.category || 'general'}</span>
+                    </div>
                   </div>
                 </div>
-                <div className="bg-gray-50 dark:bg-gray-900/50 px-5 py-3 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center">
-                  <button onClick={() => handleView(secret.id)} className="text-sm text-primary-600 dark:text-primary-400 font-medium hover:text-primary-900 dark:hover:text-primary-300">
-                    View Details
+                <div className="flex gap-1">
+                  <button onClick={() => openEdit(secret)} className="p-1.5 text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                    <Edit className="w-4 h-4" />
                   </button>
-                  <div className="flex gap-2">
-                    {canShare && (
-                      <button onClick={() => openShare(secret.id)} className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400" title="Share">
-                          <Share2 className="w-4 h-4" />
-                      </button>
-                    )}
-                    {canModify && (
-                      <button onClick={() => openEdit(secret.id)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" title="Edit">
-                          <Key className="w-4 h-4" />
-                      </button>
-                    )}
-                    {canDeleteSecret(secret) && (
-                      <button onClick={() => initiateDelete(secret)} className="text-gray-400 hover:text-red-600 dark:hover:text-red-400" title="Delete">
-                          <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
+                  <button onClick={() => handleDeleteClick(secret.id, secret.title)} className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
-            );
-          })}
+
+              <div className="space-y-3 mb-4 min-h-[100px]">
+                {secret.username && (
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-gray-500">User</span>
+                    <div className="flex items-center gap-2">
+                      <span className="dark:text-gray-300 font-mono bg-gray-50 dark:bg-gray-900 px-1.5 py-0.5 rounded">{secret.username}</span>
+                      <button onClick={() => copyToClipboard(secret.username!, secret.id, 'User copied')} className="text-gray-400 hover:text-primary-600">
+                        {copiedId === secret.id && copyStatus === 'User copied' ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {secret.password && (
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-gray-500">Secret</span>
+                    <div className="flex items-center gap-2">
+                      <span className="dark:text-gray-300 font-mono bg-gray-50 dark:bg-gray-900 px-1.5 py-0.5 rounded tracking-wider">
+                        {visiblePasswordId === secret.id ? secret.password : '••••••••••••'}
+                      </span>
+                      <button onClick={() => setVisiblePasswordId(visiblePasswordId === secret.id ? null : secret.id)} className="text-gray-400 hover:text-gray-600">
+                        {visiblePasswordId === secret.id ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                      <button onClick={() => copyToClipboard(secret.password!, secret.id, 'Pass copied')} className="text-gray-400 hover:text-primary-600">
+                        {copiedId === secret.id && copyStatus === 'Pass copied' ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {secret.api_key && (
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-gray-500">API Key</span>
+                    <div className="flex items-center gap-2">
+                      <span className="dark:text-gray-300 font-mono bg-gray-50 dark:bg-gray-900 px-1.5 py-0.5 rounded truncate max-w-[120px]">
+                        {visiblePasswordId === secret.id ? secret.api_key : '••••••••••••'}
+                      </span>
+                      <button onClick={() => copyToClipboard(secret.api_key!, secret.id, 'Key copied')} className="text-gray-400 hover:text-primary-600">
+                        {copiedId === secret.id && copyStatus === 'Key copied' ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {secret.url && (
+                  <div className="text-xs truncate text-primary-600 dark:text-primary-400 flex items-center gap-1.5 bg-primary-50 dark:bg-primary-900/10 p-2 rounded">
+                    <Globe className="w-3.5 h-3.5" /> <span className="truncate">{secret.url}</span>
+                  </div>
+                )}
+
+                {secret.notes && !secret.password && !secret.username && (
+                  <div className="text-xs text-gray-500 line-clamp-3 bg-gray-50 dark:bg-gray-900 p-2 rounded italic">
+                    {secret.notes}
+                  </div>
+                )}
+              </div>
+              <div className="flex justify-between items-center pt-4 border-t dark:border-gray-700">
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleShareClick(secret)}
+                    className="flex items-center gap-1.5 text-primary-600 dark:text-primary-400 text-xs font-bold hover:bg-primary-50 dark:hover:bg-primary-900/20 px-2 py-1.5 rounded-md transition-colors"
+                  >
+                    <Share2 className="w-3.5 h-3.5" /> Share
+                  </button>
+                </div>
+                <span className="text-[10px] text-gray-400">Modified: {new Date(secret.updated_at || secret.created_at!).toLocaleDateString()}</span>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Add/Edit Modal */}
-      <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title={currentSecret.id ? 'Edit Secret' : 'Add Secret'}>
-        <form onSubmit={handleSave} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Title *</label>
-            <input type="text" required className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 border p-2 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              value={currentSecret.title || ''} onChange={(e) => setCurrentSecret({ ...currentSecret, title: e.target.value })} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Category</label>
-            <select className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 border p-2 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              value={currentSecret.category || 'general'} onChange={(e) => setCurrentSecret({ ...currentSecret, category: e.target.value as SecretCategory })}>
-              {allCategories.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Username / Email</label>
-            <input type="text" className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 border p-2 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              value={currentSecret.username || ''} onChange={(e) => setCurrentSecret({ ...currentSecret, username: e.target.value })} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
-            <div className="relative rounded-md shadow-sm">
-                <input type={showPassword ? "text" : "password"} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 border p-2 pr-10 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                value={currentSecret.password || ''} onChange={(e) => setCurrentSecret({ ...currentSecret, password: e.target.value })} />
-                 <div className="absolute inset-y-0 right-0 pr-3 flex items-center cursor-pointer" onClick={() => setShowPassword(!showPassword)}>
-                     {showPassword ? <EyeOff className="h-4 w-4 text-gray-400" /> : <Eye className="h-4 w-4 text-gray-400" />}
-                 </div>
+      {/* Share Modal */}
+      {currentShareSecret && (
+        <SharingModal
+          isOpen={isSharingModalOpen}
+          onClose={() => setIsSharingModalOpen(false)}
+          secretId={currentShareSecret.id}
+          secretTitle={currentShareSecret.title}
+          decryptedData={currentShareSecret.decryptedData}
+        />
+      )}
+
+      {/* Edit Modal */}
+      <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title={currentSecret.id ? "Edit Secret" : "Add New Secret"}>
+        <form onSubmit={handleSave} className="space-y-6">
+          {/* Basic Information Section */}
+          <div className="space-y-3 pb-6 border-b dark:border-gray-700">
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase flex items-center gap-2">
+              <Key className="w-4 h-4" /> Basic Information
+            </h3>
+            <div className="grid gap-2">
+              <label className="text-xs font-medium text-gray-500">Title</label>
+              <input
+                required
+                placeholder="Secret Title (e.g., AWS Production API)"
+                className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                value={currentSecret.title || ''}
+                onChange={e => setCurrentSecret({ ...currentSecret, title: e.target.value })}
+              />
             </div>
           </div>
-          {currentSecret.category === 'api' && (
+
+          {/* Categorization Section */}
+          <div className="space-y-3 pb-6 border-b dark:border-gray-700">
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase flex items-center gap-2">
+              <Layers className="w-4 h-4" /> Secret Type & Category
+            </h3>
+
+            <div>
+              <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2 block">Select Type or Category</label>
+              {!isAddingCategory ? (
+                <div className="flex gap-2">
+                  <select
+                    value={currentSecret.category || 'general'}
+                    onChange={e => setCurrentSecret({ ...currentSecret, category: e.target.value })}
+                    className="flex-1 p-2 border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600 text-sm"
+                  >
+                    <optgroup label="Predefined Types">
+                      {DEFAULT_CATEGORIES.map(cat => (
+                        <option key={cat.id} value={cat.id}>{cat.label}</option>
+                      ))}
+                    </optgroup>
+                    {customCategories.length > 0 && (
+                      <optgroup label="Custom Categories">
+                        {customCategories.map(cat => (
+                          <option key={cat.id} value={cat.id}>{cat.label}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingCategory(true)}
+                    className="px-3 py-2 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-300 dark:hover:bg-gray-500 text-sm font-medium whitespace-nowrap"
+                  >
+                    + Custom
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <input
+                    autoFocus
+                    placeholder="e.g., Production Secrets, Internal Tools..."
+                    className="flex-1 p-2 border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600 text-sm"
+                    value={newCategoryLabel}
+                    onChange={e => setNewCategoryLabel(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddCategory}
+                    className="px-3 py-2 bg-primary-600 text-white rounded hover:bg-primary-700 text-sm font-medium whitespace-nowrap"
+                  >
+                    Add
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setIsAddingCategory(false); setNewCategoryLabel(''); }}
+                    className="px-3 py-2 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-300 dark:hover:bg-gray-500"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                Create custom categories to organize secrets by team, project, or environment
+              </p>
+            </div>
+          </div>
+
+          {/* Secret Details Section */}
+          <div className="space-y-3 pb-6 border-b dark:border-gray-700">
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase flex items-center gap-2">
+              <Lock className="w-4 h-4" /> Secret Details
+            </h3>
+
+            <div>
+              <label className="text-xs font-medium text-gray-500">Service URL</label>
+              <input
+                placeholder="URL (e.g., www.example.com)"
+                className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600 text-sm"
+                value={currentSecret.url || ''}
+                onChange={handleUrlChange}
+                onBlur={handleUrlBlur}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">API Key</label>
-                <input type="text" className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 border p-2 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  value={currentSecret.api_key || ''} onChange={(e) => setCurrentSecret({ ...currentSecret, api_key: e.target.value })} />
+                <label className="text-xs font-medium text-gray-500">Username</label>
+                <input
+                  placeholder="Username / Identity"
+                  className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600 text-sm"
+                  value={currentSecret.username || ''}
+                  onChange={e => setCurrentSecret({ ...currentSecret, username: e.target.value })}
+                />
               </div>
-          )}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">URL</label>
-            <input type="url" className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 border p-2 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              value={currentSecret.url || ''} onChange={(e) => setCurrentSecret({ ...currentSecret, url: e.target.value })} />
+              <div>
+                <label className="text-xs font-medium text-gray-500">Password</label>
+                <input
+                  type="password"
+                  placeholder="••••••••••••"
+                  className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600 text-sm font-mono"
+                  value={currentSecret.password || ''}
+                  onChange={e => setCurrentSecret({ ...currentSecret, password: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-gray-500">API Key / Token</label>
+              <input
+                placeholder="sk_live_..."
+                className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600 text-sm font-mono"
+                value={currentSecret.api_key || ''}
+                onChange={e => setCurrentSecret({ ...currentSecret, api_key: e.target.value })}
+              />
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Notes</label>
-            <textarea rows={3} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 border p-2 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              value={currentSecret.notes || ''} onChange={(e) => setCurrentSecret({ ...currentSecret, notes: e.target.value })} />
+
+          {/* Additional Information Section */}
+          <div className="space-y-3 pb-6">
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase flex items-center gap-2">
+              <FileText className="w-4 h-4" /> Additional Information
+            </h3>
+            <textarea
+              placeholder="Notes..."
+              className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600 text-sm"
+              rows={3}
+              value={currentSecret.notes || ''}
+              onChange={e => setCurrentSecret({ ...currentSecret, notes: e.target.value })}
+            />
           </div>
-          <div className="flex justify-end gap-3 pt-4">
-            <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-4 py-2 border dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600">Cancel</button>
-            <button type="submit" className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700">Save</button>
+
+          <div className="flex gap-4">
+            <button type="button" onClick={() => setIsEditModalOpen(false)} className="flex-1 py-2 rounded-md font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+              Cancel
+            </button>
+            <button type="submit" className="flex-1 bg-primary-600 text-white py-2 rounded-md font-bold hover:bg-primary-700 transition-colors shadow-sm">
+              {currentSecret.id ? "Update Secret" : "Securely Save"}
+            </button>
           </div>
         </form>
       </Modal>
 
-      {/* Manage Categories Modal */}
-      <Modal isOpen={isCategoryModalOpen} onClose={() => setIsCategoryModalOpen(false)} title="Manage Categories">
-          <div className="space-y-6">
-              {canManageCategories && (
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Add New Category</label>
-                    <form onSubmit={handleAddCategory} className="flex gap-2">
-                        <input 
-                          type="text" 
-                          required
-                          placeholder="e.g. Finance"
-                          className="flex-1 rounded-md border-gray-300 dark:border-gray-600 border p-2 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                          value={newCategoryName}
-                          onChange={(e) => setNewCategoryName(e.target.value)}
-                        />
-                        <button 
-                          type="submit" 
-                          disabled={categoryLoading || !newCategoryName.trim()}
-                          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none disabled:opacity-50"
-                        >
-                            {categoryLoading ? <Loader2 className="animate-spin h-4 w-4" /> : 'Add'}
-                        </button>
-                    </form>
-                </div>
-              )}
-
-              <div>
-                  <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Custom Categories</h4>
-                  {customCategories.length === 0 ? (
-                      <p className="text-sm text-gray-500 dark:text-gray-400 italic">No custom categories added yet.</p>
-                  ) : (
-                      <ul className="divide-y divide-gray-100 dark:divide-gray-700 bg-white dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700">
-                          {customCategories.map(cat => (
-                              <li key={cat.id} className="flex justify-between items-center p-3">
-                                  <div className="flex items-center gap-2">
-                                      <Tag className="w-4 h-4 text-teal-600 dark:text-teal-400" />
-                                      <span className="text-sm text-gray-900 dark:text-white">{cat.label}</span>
-                                  </div>
-                                  {canManageCategories && (
-                                    <button 
-                                      onClick={() => handleDeleteCategory(cat.id)}
-                                      className="text-gray-400 hover:text-red-500 transition-colors"
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  )}
-                              </li>
-                          ))}
-                      </ul>
-                  )}
-              </div>
-          </div>
-      </Modal>
-
-      {/* Share Modal */}
-      <Modal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} title="Share Secret">
-           {!generatedLink ? (
-             <div className="space-y-4">
-                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                     Generate a secure, temporary link to share this secret with others.
-                 </p>
-                 <div>
-                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Expiration</label>
-                     <select
-                        className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                        value={shareConfig.expiresInMinutes}
-                        onChange={(e) => setShareConfig({ ...shareConfig, expiresInMinutes: Number(e.target.value) })}
-                     >
-                         <option value={60}>1 Hour</option>
-                         <option value={1440}>1 Day</option>
-                         <option value={4320}>3 Days</option>
-                         <option value={10080}>1 Week</option>
-                     </select>
-                 </div>
-                 <div>
-                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Max Views</label>
-                     <select
-                        className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                        value={shareConfig.maxViews}
-                        onChange={(e) => setShareConfig({ ...shareConfig, maxViews: Number(e.target.value) })}
-                     >
-                         <option value={1}>1 View (Burn after reading)</option>
-                         <option value={5}>5 Views</option>
-                         <option value={10}>10 Views</option>
-                         <option value={0}>Unlimited</option>
-                     </select>
-                 </div>
-                 <div className="pt-4 flex justify-end">
-                     <button 
-                        onClick={generateShareLink} 
-                        disabled={sharingLoading}
-                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none"
-                     >
-                        {sharingLoading ? <Loader2 className="animate-spin h-4 w-4 mr-2"/> : <Share2 className="h-4 w-4 mr-2" />}
-                        Generate Link
-                     </button>
-                 </div>
-             </div>
-           ) : (
-               <div className="space-y-4">
-                   <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-md flex items-center mb-4">
-                       <Check className="h-5 w-5 text-green-500 mr-2" />
-                       <span className="text-sm text-green-800 dark:text-green-200">Link generated successfully!</span>
-                   </div>
-                   <div>
-                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Share Link</label>
-                       <div className="mt-1 flex rounded-md shadow-sm">
-                           <input 
-                              type="text" 
-                              readOnly 
-                              value={generatedLink}
-                              className="flex-1 min-w-0 block w-full px-3 py-2 rounded-none rounded-l-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-600 text-gray-500 dark:text-gray-200 sm:text-sm"
-                           />
-                             <div className="inline-flex items-center rounded-r-md border border-l-0 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700">
-                               <AnimatedCopyButton value={generatedLink} />
-                             </div>
-                       </div>
-                       <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                           Anyone with this link can view the secret according to the limits you set.
-                       </p>
-                   </div>
-                   <div className="pt-4 flex justify-end">
-                       <button 
-                          onClick={() => { setIsShareModalOpen(false); setGeneratedLink(''); }}
-                          className="text-primary-600 hover:text-primary-500 font-medium text-sm"
-                       >
-                           Close
-                       </button>
-                   </div>
-               </div>
-           )}
-      </Modal>
-
-      {/* View Modal */}
-      <Modal isOpen={isViewModalOpen} onClose={() => setIsViewModalOpen(false)} title="Secret Details">
-        {viewSecretData && (
-            <div className="space-y-4">
-                <div className="flex items-center gap-2 mb-4 pb-4 border-b border-gray-100 dark:border-gray-700">
-                    {(() => {
-                        const meta = getCategoryMeta(viewSecretData.category);
-                        const Icon = meta.icon;
-                        return <Icon className={`h-6 w-6 ${meta.color.split(' ')[1]} ${meta.darkColor.split(' ')[1]}`} />;
-                    })()}
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">{viewSecretData.title}</h2>
-                </div>
-
-                {viewSecretData.username && (
-                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-md group relative">
-                        <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Username</label>
-                        <div className="flex justify-between items-center mt-1">
-                             <span className="font-mono text-gray-900 dark:text-gray-100">{viewSecretData.username}</span>
-                             <AnimatedCopyButton value={viewSecretData.username} />
-                        </div>
-                    </div>
-                )}
-
-                {viewSecretData.password && (
-                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-md">
-                        <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Password</label>
-                        <div className="flex justify-between items-center mt-1">
-                             <span className="font-mono text-gray-900 dark:text-gray-100 break-all">{showPassword ? viewSecretData.password : '••••••••••••'}</span>
-                             <div className="flex gap-2">
-                                <button onClick={() => setShowPassword(!showPassword)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-                                    {showPassword ? <EyeOff className="w-4 h-4"/> : <Eye className="w-4 h-4"/>}
-                                </button>
-                                <AnimatedCopyButton value={viewSecretData.password} />
-                             </div>
-                        </div>
-                    </div>
-                )}
-
-                {viewSecretData.api_key && (
-                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-md">
-                        <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">API Key</label>
-                        <div className="flex justify-between items-center mt-1">
-                             <span className="font-mono text-gray-900 dark:text-gray-100 break-all">{showPassword ? viewSecretData.api_key : '••••••••••••'}</span>
-                             <div className="flex gap-2">
-                                <button onClick={() => setShowPassword(!showPassword)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-                                    {showPassword ? <EyeOff className="w-4 h-4"/> : <Eye className="w-4 h-4"/>}
-                                </button>
-                                <AnimatedCopyButton value={viewSecretData.api_key} />
-                             </div>
-                        </div>
-                    </div>
-                )}
-
-                {viewSecretData.url && (
-                    <div className="p-1">
-                         <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">URL</label>
-                         <div className="mt-1">
-                            <a href={viewSecretData.url} target="_blank" rel="noreferrer" className="text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-1 break-all">
-                                <Globe className="w-3 h-3"/> {viewSecretData.url}
-                            </a>
-                         </div>
-                    </div>
-                )}
-
-                {viewSecretData.notes && (
-                    <div className="p-1">
-                        <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Notes</label>
-                        <div className="mt-1 text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded border border-yellow-100 dark:border-yellow-900/30">
-                            {viewSecretData.notes}
-                        </div>
-                    </div>
-                )}
-            </div>
-        )}
-      </Modal>
-
       {/* Delete Confirmation Modal */}
-      <Modal
-        isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
-        title="Delete Secret"
-      >
-         <div className="flex flex-col items-center text-center">
-            <div className="bg-red-100 dark:bg-red-900/30 p-3 rounded-full mb-4">
-                <AlertTriangle className="w-8 h-8 text-red-600 dark:text-red-400" />
-            </div>
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Are you sure?</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-                This action cannot be undone. This will permanently delete this secret.
+      <Modal isOpen={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)} title="Confirm Deletion">
+        <div className="space-y-6 py-4 text-center">
+          <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 dark:bg-red-900/30">
+            <ShieldAlert className="h-8 w-8 text-red-600 dark:text-red-400" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Delete Secret?</h3>
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+              Are you sure you want to delete <span className="font-bold text-gray-700 dark:text-gray-200">"{secretToDelete?.title}"</span>?
+              This action cannot be undone and all active share links will be revoked.
             </p>
-            <div className="flex gap-3 w-full">
-                <button
-                    onClick={() => setIsDeleteModalOpen(false)}
-                    className="flex-1 justify-center rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
-                >
-                    Cancel
-                </button>
-                <button
-                    onClick={confirmDelete}
-                    className="flex-1 justify-center rounded-md border border-transparent bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
-                >
-                    Delete
-                </button>
-            </div>
+          </div>
+          <div className="flex gap-4">
+            <button
+              onClick={() => setIsDeleteModalOpen(false)}
+              className="flex-1 py-2.5 rounded-lg font-bold text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmDelete}
+              className="flex-1 py-2.5 rounded-lg font-bold text-white bg-red-600 hover:bg-red-700 transition-colors shadow-sm"
+            >
+              Delete Permanently
+            </button>
+          </div>
         </div>
       </Modal>
     </div>

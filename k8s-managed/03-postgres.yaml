@@ -1,0 +1,149 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keypouch-init-script
+  namespace: keypouch
+data:
+  init.sql: |
+    -- Drop and recreate users table with correct schema
+    DROP TABLE IF EXISTS secrets CASCADE;
+    DROP TABLE IF EXISTS contacts CASCADE;
+    DROP TABLE IF EXISTS emergency_contacts CASCADE;
+    DROP TABLE IF EXISTS call_logs CASCADE;
+    DROP TABLE IF EXISTS sip_accounts CASCADE;
+    DROP TABLE IF EXISTS users CASCADE;
+
+    -- Create users table
+    CREATE TABLE users (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(100) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        role VARCHAR(50) DEFAULT 'view' CHECK (role IN ('admin', 'full-access', 'modify', 'view')),
+        security_question TEXT,
+        security_answer TEXT,
+        is_disabled BOOLEAN NOT NULL DEFAULT FALSE,
+        must_reset_password BOOLEAN NOT NULL DEFAULT FALSE,
+        mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        mfa_secret TEXT,
+        session_version INTEGER NOT NULL DEFAULT 0,
+        is_demo BOOLEAN NOT NULL DEFAULT FALSE,
+        last_login_at TIMESTAMP,
+        password_changed_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Create contacts table
+    CREATE TABLE contacts (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        phone VARCHAR(50) NOT NULL,
+        address TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Create emergency_contacts table
+    CREATE TABLE emergency_contacts (
+        id SERIAL PRIMARY KEY,
+        contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        phone VARCHAR(50) NOT NULL,
+        email VARCHAR(255) NOT NULL,
+        relationship VARCHAR(50) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Create secrets table
+    CREATE TABLE secrets (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title VARCHAR(255) NOT NULL,
+        category VARCHAR(50) DEFAULT 'general',
+        username VARCHAR(255),
+        password TEXT,
+        api_key TEXT,
+        url TEXT,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Create indexes
+    CREATE INDEX idx_contacts_user_id ON contacts(user_id);
+    CREATE INDEX idx_emergency_contacts_contact_id ON emergency_contacts(contact_id);
+    CREATE INDEX idx_secrets_user_id ON secrets(user_id);
+
+    -- Create default demo admin user (password is 'admin')
+    INSERT INTO users (username, password, role, is_demo) 
+    VALUES ('admin', 'admin', 'admin', TRUE);
+
+    -- Create audit_logs table
+    CREATE TABLE audit_logs (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(100) NOT NULL,
+        action VARCHAR(100) NOT NULL,
+        details TEXT,
+        ip VARCHAR(45),
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Create indexes for audit_logs
+    CREATE INDEX idx_audit_logs_timestamp ON audit_logs(timestamp);
+    CREATE INDEX idx_audit_logs_username ON audit_logs(username);
+
+    -- Add unique constraint for real admin users
+    CREATE UNIQUE INDEX idx_real_admin ON users (role) WHERE role = 'admin' AND is_demo = FALSE;
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: keypouch
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      component: database
+  template:
+    metadata:
+      labels:
+        component: database
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_USER
+          value: "admin"
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: keypouch-secrets
+              key: POSTGRES_PASSWORD
+        - name: POSTGRES_DB
+          value: "keypouch"
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        - name: init-script
+          mountPath: /docker-entrypoint-initdb.d
+      volumes:
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: postgres-pvc
+      - name: init-script
+        configMap:
+          name: keypouch-init-script
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: keypouch
+spec:
+  ports:
+  - port: 5432
+  selector:
+    component: database

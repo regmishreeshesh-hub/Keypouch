@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import * as authService from '../services/authService';
+import * as encryptionService from '../services/encryptionService';
 import { Shield, Loader2, CheckCircle, Sun, Moon } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -25,18 +26,23 @@ const Login: React.FC = () => {
     e.preventDefault();
     setLoading(true);
     setError('');
-    
+
     try {
       const data = await authService.login(username, password);
+
+      // Derive and store master key for E2EE
+      await encryptionService.getMasterKey(password, username);
+
       localStorage.setItem('token', data.token);
       localStorage.setItem('username', data.username);
       localStorage.setItem('role', data.role);
       localStorage.setItem('is_demo', data.is_demo.toString());
       localStorage.setItem('must_reset_password', data.must_reset_password ? 'true' : 'false');
+
       if (data.must_reset_password) {
         navigate('/change-password', { replace: true });
       } else {
-        navigate('/contacts');
+        navigate('/secrets'); // Redirect to secrets instead of contacts for better demo
       }
     } catch (err: any) {
       setError(err.message || 'Login failed');
@@ -47,7 +53,7 @@ const Login: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col justify-center py-12 sm:px-6 lg:px-8 transition-colors duration-200">
-      
+
       <div className="absolute top-4 right-4">
         <button
           onClick={toggleTheme}
@@ -59,9 +65,9 @@ const Login: React.FC = () => {
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
-            <div className="rounded-full bg-primary-600 p-3">
-                <Shield className="h-10 w-10 text-white" />
-            </div>
+          <div className="rounded-full bg-primary-600 p-3">
+            <Shield className="h-10 w-10 text-white" />
+          </div>
         </div>
         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900 dark:text-white">Sign in to KeyPouch</h2>
         <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
