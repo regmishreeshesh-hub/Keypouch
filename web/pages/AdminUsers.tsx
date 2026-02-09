@@ -135,6 +135,11 @@ const AdminUsers: React.FC = () => {
     must_reset_password: false
   });
 
+  const [isRevokeModalOpen, setIsRevokeModalOpen] = useState(false);
+  const [revokeTarget, setRevokeTarget] = useState<User | null>(null);
+
+  const [isRevokeSuccessOpen, setIsRevokeSuccessOpen] = useState(false);
+
   const fetchUsers = async () => {
     setLoading(true);
     try {
@@ -181,13 +186,21 @@ const AdminUsers: React.FC = () => {
     }
   };
 
-  const handleRevokeSessions = async (user: User) => {
-    if (!window.confirm(`Revoke active sessions for ${user.username}?`)) return;
+  const handleRevokeSessions = (user: User) => {
+    setRevokeTarget(user);
+    setIsRevokeModalOpen(true);
+  };
+
+  const confirmRevokeSessions = async () => {
+    if (!revokeTarget) return;
     try {
-      await authService.revokeUserSessions(user.id);
-      alert('Sessions revoked');
+      await authService.revokeUserSessions(revokeTarget.id);
+      setIsRevokeSuccessOpen(true);
     } catch (err: any) {
       alert('Failed to revoke sessions');
+    } finally {
+      setIsRevokeModalOpen(false);
+      setRevokeTarget(null);
     }
   };
 
@@ -843,6 +856,57 @@ const AdminUsers: React.FC = () => {
               Delete User
             </button>
           </div>
+        </div>
+      </Modal>
+
+      {/* Revoke Sessions Confirmation Modal */}
+      <Modal
+        isOpen={isRevokeModalOpen}
+        onClose={() => setIsRevokeModalOpen(false)}
+        title="Revoke Active Sessions"
+      >
+        <div className="flex flex-col items-center text-center">
+          <div className="bg-yellow-100 dark:bg-yellow-900/30 p-3 rounded-full mb-4">
+            <LogOut className="w-8 h-8 text-yellow-600 dark:text-yellow-400" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Revoke active sessions for <strong>{revokeTarget?.username}</strong>?</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+            This will immediately log out all devices for this user. Continue?
+          </p>
+          <div className="flex gap-3 w-full">
+            <button
+              onClick={() => setIsRevokeModalOpen(false)}
+              className="flex-1 justify-center rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmRevokeSessions}
+              className="flex-1 justify-center rounded-md border border-transparent bg-yellow-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2"
+            >
+              Revoke Sessions
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Sessions Revoked Success Modal */}
+      <Modal
+        isOpen={isRevokeSuccessOpen}
+        onClose={() => setIsRevokeSuccessOpen(false)}
+        title="Sessions Revoked"
+      >
+        <div className="flex flex-col items-center text-center">
+          <div className="bg-green-100 dark:bg-green-900/30 p-3 rounded-full mb-4">
+            <LogOut className="w-8 h-8 text-green-600 dark:text-green-400" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">All active sessions for this user have been revoked.</h3>
+          <button
+            onClick={() => setIsRevokeSuccessOpen(false)}
+            className="mt-4 w-full rounded-md border border-transparent bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+          >
+            Close
+          </button>
         </div>
       </Modal>
     </div>

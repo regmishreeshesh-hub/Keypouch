@@ -1644,6 +1644,68 @@ app.delete('/api/custom-categories/:id', authenticateToken, async (req, res) => 
   }
 });
 
+app.get('/api/admin/check', async (req, res) => {
+  try {
+    const existingAdmin = await pool.query(
+      'SELECT id FROM users WHERE role = $1 AND is_demo = FALSE',
+      ['admin']
+    );
+    res.json({ exists: existingAdmin.rows.length > 0 });
+  } catch (error) {
+    res.status(500).json({ exists: false });
+  }
+});
+
+// Admin Recovery Phrase and Password Reset
+const RECOVERY_KEYWORD_HASH_ITER = 100000;
+const RECOVERY_KEYWORD_HASH_ALGO = 'sha256';
+const RECOVERY_KEYWORD_SALT = process.env.RECOVERY_KEYWORD_SALT || 'changeme';
+const { pbkdf2Sync } = require('crypto');
+
+function hashRecoveryKeywords(keywords) {
+  // Sort and join keywords for order-agnostic hash
+  const sorted = [...keywords].map(w => w.trim().toLowerCase()).sort().join(' ');
+  return pbkdf2Sync(sorted, RECOVERY_KEYWORD_SALT, RECOVERY_KEYWORD_HASH_ITER, 64, RECOVERY_KEYWORD_HASH_ALGO).toString('hex');
+}
+
+// Store recovery hash and security answers during admin setup
+// (Extend /api/register-admin or create a new endpoint as needed)
+
+// Password recovery endpoint
+app.post('/api/admin/recover', async (req, res) => {
+  try {
+    const { keywords, questions, newPassword } = req.body;
+    if (!Array.isArray(keywords) || keywords.length !== 6 || !Array.isArray(questions) || questions.length !== 3 || !newPassword) {
+      return res.status(400).json({ error: '6 keywords, 3 questions, and newPassword are required' });
+    }
+    // Fetch admin recovery data
+    const result = await pool.query('SELECT id, recovery_hash, recovery_questions, recovery_answers FROM users WHERE role = $1 AND is_demo = FALSE', ['admin']);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'No admin account found' });
+    }
+    const admin = result.rows[0];
+    // Verify keywords
+    const hash = hashRecoveryKeywords(keywords);
+    if (hash !== admin.recovery_hash) {
+      return res.status(403).json({ error: 'Invalid recovery keywords' });
+    }
+    // Verify security questions
+    const expectedAnswers = (admin.recovery_answers || '').split(',').map(a => a.trim().toLowerCase());
+    for (let i = 0; i < 3; i++) {
+      if (questions[i].trim().toLowerCase() !== expectedAnswers[i]) {
+        return res.status(403).json({ error: 'Incorrect answer to security question' });
+      }
+    }
+    // Update password
+    await pool.query('UPDATE users SET password = $1, must_reset_password = FALSE, password_changed_at = CURRENT_TIMESTAMP, session_version = session_version + 1 WHERE id = $2', [newPassword, admin.id]);
+    await logActivity(admin.id, 'ADMIN_PASSWORD_RECOVERY', 'Password reset via recovery phrase', req);
+    res.json({ message: 'Password updated successfully' });
+  } catch (error) {
+    console.error('Admin recovery error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

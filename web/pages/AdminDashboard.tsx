@@ -20,6 +20,7 @@ const AdminDashboard: React.FC = () => {
     const [recentLogs, setRecentLogs] = useState<AuditLog[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const logoData = localStorage.getItem('companyLogo');
 
     useEffect(() => {
         const fetchDashboardData = async () => {
@@ -52,10 +53,17 @@ const AdminDashboard: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4 mb-6">
+                {logoData ? (
+                    <img src={logoData} alt="Company Logo" className="h-16 w-16 rounded-full object-cover border border-primary-600 shadow-lg" />
+                ) : (
+                    <div className="rounded-full bg-primary-600 p-4">
+                        <Shield className="h-10 w-10 text-white" />
+                    </div>
+                )}
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Admin Dashboard</h1>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">System overview and management.</p>
+                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Admin Dashboard</h1>
+                    <p className="text-base text-gray-500 dark:text-gray-400 mt-1">System overview and management.</p>
                 </div>
             </div>
 

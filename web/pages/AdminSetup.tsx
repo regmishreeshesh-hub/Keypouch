@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Shield, Loader2, Building2, User, Lock, HelpCircle, CheckCircle } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
@@ -33,8 +33,24 @@ const AdminSetup: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const [companyLogo, setCompanyLogo] = useState<string | null>(null);
+  const [adminExists, setAdminExists] = useState(false);
   const navigate = useNavigate();
   const { theme } = useTheme();
+
+  useEffect(() => {
+    // Check if real admin exists
+    const checkAdmin = async () => {
+      try {
+        const res = await fetch('/api/admin/check');
+        const data = await res.json();
+        setAdminExists(data.exists);
+      } catch {
+        setAdminExists(false);
+      }
+    };
+    checkAdmin();
+  }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -42,6 +58,18 @@ const AdminSetup: React.FC = () => {
       ...prev,
       [name]: value
     }));
+  };
+
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setCompanyLogo(ev.target?.result as string);
+        localStorage.setItem('companyLogo', ev.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -86,10 +114,10 @@ const AdminSetup: React.FC = () => {
       localStorage.setItem('is_demo', (data.is_demo || false).toString());
       localStorage.setItem('must_reset_password', (data.must_reset_password || false).toString());
 
-      setSuccess('Admin account created successfully! Redirecting...');
+      setSuccess('Admin account created successfully! Redirecting to login...');
       
       setTimeout(() => {
-        navigate('/contacts');
+        navigate('/login');
       }, 2000);
 
     } catch (err: any) {
@@ -98,6 +126,18 @@ const AdminSetup: React.FC = () => {
       setLoading(false);
     }
   };
+
+  if (adminExists) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="bg-white dark:bg-gray-800 p-8 rounded shadow-md w-full max-w-md text-center">
+          <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Admin Setup Unavailable</h2>
+          <p className="text-gray-700 dark:text-gray-300 mb-4">An admin user has already been created for this company. Please contact support if you need to reset admin access.</p>
+          <a href="/login" className="text-primary-600 hover:text-primary-700 font-bold">Go to Login</a>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
@@ -137,6 +177,22 @@ const AdminSetup: React.FC = () => {
           )}
 
           <form className="space-y-6" onSubmit={handleSubmit}>
+            <div>
+              <label htmlFor="companyLogo" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Company Logo
+              </label>
+              <div className="mt-1">
+                <input
+                  id="companyLogo"
+                  name="companyLogo"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoChange}
+                  className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+              </div>
+            </div>
+
             {error && (
               <div className="rounded-md bg-red-50 dark:bg-red-900/20 p-4">
                 <div className="flex">

@@ -10,9 +10,14 @@ import AdminDashboard from './pages/AdminDashboard';
 import AdminUsers from './pages/AdminUsers';
 import AuditLogs from './pages/AuditLogs';
 import SharedSecret from './pages/SharedSecret';
+import AdminSetup from './pages/AdminSetup';
+import Welcome from './pages/Welcome';
 import Layout from './components/Layout';
 import { register } from './services/authService';
 import { ThemeProvider } from './contexts/ThemeContext';
+import EnterpriseSetup from './pages/EnterpriseSetup';
+import DemoSetup from './pages/DemoSetup';
+import PasswordRecovery from './pages/PasswordRecovery';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const token = localStorage.getItem('token');
@@ -42,8 +47,31 @@ const PublicRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
+const DemoProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const token = localStorage.getItem('token');
+  const isDemo = localStorage.getItem('is_demo') === 'true';
+  if (!token || !isDemo) {
+    return <Navigate to="/login" replace />;
+  }
+  return <Layout>{children}</Layout>;
+};
+
 const App: React.FC = () => {
   useEffect(() => {
+    // Remove demo admin user after real admin setup
+    const removeDemoAdmin = async () => {
+      if (localStorage.getItem('role') === 'admin' && localStorage.getItem('username') !== 'admin') {
+        // Call backend to delete demo admin user
+        try {
+          await fetch('/api/admin/remove-demo', { method: 'POST', headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } });
+          console.log('Demo admin user removed');
+        } catch (err) {
+          console.debug('Demo admin removal failed:', err);
+        }
+      }
+    };
+    removeDemoAdmin();
+
     // Attempt to create the default admin user on startup
     const initDefaultUser = async () => {
       try {
@@ -66,10 +94,16 @@ const App: React.FC = () => {
     initDefaultUser();
   }, []);
 
+  // Check if any admin or demo user exists
+  const hasAdminOrDemo = Boolean(localStorage.getItem('role'));
+
   return (
     <ThemeProvider>
       <HashRouter>
         <Routes>
+          <Route path="/welcome" element={<Welcome />} />
+          <Route path="/enterprise-setup" element={<EnterpriseSetup />} />
+          <Route path="/demo-setup" element={<DemoSetup />} />
           <Route path="/login" element={
             <PublicRoute>
               <Login />
@@ -113,12 +147,33 @@ const App: React.FC = () => {
               <AdminUsers />
             </AdminRoute>
           } />
+          <Route path="/admin-setup" element={
+            <PublicRoute>
+              <AdminSetup />
+            </PublicRoute>
+          } />
           <Route path="/admin/logs" element={
             <AdminRoute>
               <AuditLogs />
             </AdminRoute>
           } />
-          <Route path="/" element={<Navigate to="/contacts" replace />} />
+          <Route path="/password-recovery" element={<PasswordRecovery />} />
+
+          {/* Example: Demo-only route (add your demo pages here) */}
+          {/* <Route path="/demo-feature" element={
+            <DemoProtectedRoute>
+              <DemoFeaturePage />
+            </DemoProtectedRoute>
+          } /> */}
+
+          {/* Example: Enterprise-only route (already protected by AdminRoute/ProtectedRoute) */}
+          {/* <Route path="/enterprise-feature" element={
+            <AdminRoute>
+              <EnterpriseFeaturePage />
+            </AdminRoute>
+          } /> */}
+
+          <Route path="/" element={<Navigate to={hasAdminOrDemo ? "/contacts" : "/welcome"} replace />} />
         </Routes>
       </HashRouter>
     </ThemeProvider>

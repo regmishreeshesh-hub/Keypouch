@@ -14,6 +14,7 @@ const Login: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
+  const logoData = localStorage.getItem('companyLogo');
 
   useEffect(() => {
     if (location.state?.success) {
@@ -64,18 +65,17 @@ const Login: React.FC = () => {
       </div>
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="flex justify-center">
-          <div className="rounded-full bg-primary-600 p-3">
-            <Shield className="h-10 w-10 text-white" />
-          </div>
+        <div className="flex justify-center mb-4">
+          {logoData ? (
+            <img src={logoData} alt="Company Logo" className="h-16 w-16 rounded-full object-cover border border-gray-300 dark:border-gray-600" />
+          ) : (
+            <div className="rounded-full bg-primary-600 p-3">
+              <Shield className="h-10 w-10 text-white" />
+            </div>
+          )}
         </div>
         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900 dark:text-white">Sign in to KeyPouch</h2>
         <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
-          Or{' '}
-          <Link to="/register" className="font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300">
-            create a new account
-          </Link>
-          <span className="mx-2 text-gray-400">•</span>
           <Link to="/admin-setup" className="font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300">
             first-time admin setup
           </Link>
