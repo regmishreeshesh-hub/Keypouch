@@ -137,7 +137,7 @@ const AdminDashboard: React.FC = () => {
                         </Link>
                         <Link to="/secrets" className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors sm:col-span-2">
                             <Lock className="w-5 h-5 text-gray-500" />
-                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Access Secure Vault</span>
+                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Access Secrets</span>
                         </Link>
                     </div>
                 </div>

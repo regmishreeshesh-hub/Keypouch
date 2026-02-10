@@ -1037,9 +1037,19 @@ app.get('/api/secrets', authenticateToken, requirePermission('view'), async (req
     let userSecrets = secrets.filter(s => s.user_id === req.user.id);
 
     if (search) {
-      userSecrets = userSecrets.filter(s => 
-        s.title.toLowerCase().includes(search.toLowerCase())
-      );
+      const normalizedSearch = String(search).toLowerCase();
+      userSecrets = userSecrets.filter(s => {
+        const haystack = [
+          s.title,
+          s.username,
+          s.url,
+          s.notes,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(normalizedSearch);
+      });
     }
 
     if (category) {

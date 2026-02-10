@@ -3,25 +3,37 @@ const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
+require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 5001;
 
 // Middleware
-app.use(cors());
+const corsOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+app.use(cors(corsOrigins.length ? { origin: corsOrigins, credentials: true } : undefined));
 app.use(express.json());
 
 // Database connection
+const DB_USER = process.env.DB_USER || 'admin';
+const DB_HOST = process.env.DB_HOST || 'db';
+const DB_NAME = process.env.DB_NAME || 'keypouch';
+const DB_PASSWORD = process.env.DB_PASSWORD || 'admin';
+const DB_PORT = Number(process.env.DB_PORT || 5432);
+
 const pool = new Pool({
-  user: 'admin',
-  host: 'db',
-  database: 'keypouch',
-  password: 'admin',
-  port: 5432,
+  user: DB_USER,
+  host: DB_HOST,
+  database: DB_NAME,
+  password: DB_PASSWORD,
+  port: DB_PORT,
 });
 
 // JWT Secret
-const JWT_SECRET = 'your-secret-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
 // Load RSA keys for RS256 signing (for sharing)
 const fs = require('fs');
@@ -159,6 +171,17 @@ const connectWithRetry = () => {
 };
 
 connectWithRetry();
+
+// Health checks (for Kubernetes probes)
+app.get('/api/health/live', (_req, res) => res.status(200).json({ status: 'ok' }));
+app.get('/api/health/ready', async (_req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    return res.status(200).json({ status: 'ok' });
+  } catch (error) {
+    return res.status(503).json({ status: 'not-ready', error: 'db_unavailable' });
+  }
+});
 
 // Role-based permission middleware
 const checkPermission = (requiredRole) => {
@@ -1236,7 +1259,8 @@ app.get('/api/secrets', authenticateToken, checkPermission('view'), async (req, 
     let whereClause = '';
 
     if (search) {
-      whereClause += ' AND title ILIKE $' + (params.length + 1);
+      const paramIndex = params.length + 1;
+      whereClause += ` AND (title ILIKE $${paramIndex} OR username ILIKE $${paramIndex} OR url ILIKE $${paramIndex} OR notes ILIKE $${paramIndex})`;
       params.push(`%${search}%`);
     }
 

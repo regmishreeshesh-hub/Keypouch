@@ -6,8 +6,8 @@ import { Shield, Loader2, CheckCircle, Sun, Moon } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 
 const Login: React.FC = () => {
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('admin');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
@@ -94,8 +94,6 @@ const Login: React.FC = () => {
   };
 
   // Only show create demo user if logged in as demo admin
-  const isDemoAdmin = localStorage.getItem('is_demo') === 'true' && localStorage.getItem('role') === 'admin';
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col justify-center py-12 sm:px-6 lg:px-8 transition-colors duration-200">
 
@@ -120,8 +118,13 @@ const Login: React.FC = () => {
         </div>
         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900 dark:text-white">Sign in to KeyPouch</h2>
         <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
+          New here?{' '}
           <Link to="/admin-setup" className="font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300">
-            first-time admin setup
+            guided admin setup
+          </Link>
+          {' '}or{' '}
+          <Link to="/welcome" className="font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300">
+            choose setup mode
           </Link>
         </p>
       </div>

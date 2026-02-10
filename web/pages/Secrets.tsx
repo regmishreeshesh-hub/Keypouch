@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Secret, SecretPayload, CustomCategory } from '../types';
 import * as secretService from '../services/secretService';
 import * as encryptionService from '../services/encryptionService';
 import Modal from '../components/Modal';
 import SharingModal from '../components/SharingModal';
-import { Search, Plus, Trash2, Key, Database, Globe, FileText, Loader2, Lock, ShieldCheck, Server, Layers, X, Share2, Copy, Check, Eye, EyeOff, Edit, ShieldAlert } from 'lucide-react';
+import SearchBar from '../components/ui/SearchBar';
+import { Plus, Trash2, Key, Database, Globe, FileText, Loader2, Lock, ShieldCheck, Server, Layers, X, Share2, Copy, Check, Eye, EyeOff, Edit, ShieldAlert } from 'lucide-react';
 
 const SECRET_TYPES = [
   { id: 'api_key', label: 'API Key / Token' },
@@ -30,14 +31,41 @@ const DEFAULT_CATEGORIES = [
   { id: 'general', label: 'General' },
 ];
 
+const searchSecretsInSecrets = (secrets: Secret[], query: string): Secret[] => {
+  const tokens = query
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (tokens.length === 0) return secrets;
+
+  return secrets.filter((secret) => {
+    const haystack = [
+      secret.title,
+      secret.category,
+      secret.username,
+      secret.url,
+      secret.notes,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+
+    return tokens.every((t) => haystack.includes(t));
+  });
+};
+
 const Secrets: React.FC = () => {
   const [secrets, setSecrets] = useState<Secret[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [currentSecret, setCurrentSecret] = useState<Partial<Secret>>({});
   const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
   const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [newCategoryLabel, setNewCategoryLabel] = useState('');
+  const visibleSecrets = useMemo(() => searchSecretsInSecrets(secrets, searchTerm), [secrets, searchTerm]);
 
   const fetchSecrets = async () => {
     setLoading(true);
@@ -280,7 +308,7 @@ const Secrets: React.FC = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold dark:text-white">Vault</h1>
+          <h1 className="text-2xl font-bold dark:text-white">Secrets</h1>
           <p className="text-xs text-gray-500 flex items-center gap-1.5 mt-1">
             <ShieldCheck className="w-3.5 h-3.5 text-green-500" />
             Zero-Knowledge AES-256 Protection Active
@@ -291,15 +319,23 @@ const Secrets: React.FC = () => {
         </button>
       </div>
 
+      <SearchBar
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+        placeholder="Search secrets (title, user, URL, notes)..."
+      />
+
       {loading ? <div className="flex justify-center p-12"><Loader2 className="animate-spin w-8 h-8 text-primary-600" /></div> : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {secrets.length === 0 && (
+          {visibleSecrets.length === 0 && (
             <div className="col-span-full py-12 text-center bg-white dark:bg-gray-800 rounded-xl border border-dashed border-gray-300 dark:border-gray-700">
               <Lock className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500 dark:text-gray-400">No secrets found in your vault.</p>
+              <p className="text-gray-500 dark:text-gray-400">
+                {searchTerm.trim() ? `No secrets match "${searchTerm.trim()}".` : 'No secrets found.'}
+              </p>
             </div>
           )}
-          {secrets.map(secret => (
+          {visibleSecrets.map(secret => (
             <div key={secret.id} className="bg-white dark:bg-gray-800 p-5 rounded-xl border dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex justify-between mb-4">
                 <div className="flex items-center gap-2">

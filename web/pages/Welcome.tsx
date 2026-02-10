@@ -14,9 +14,9 @@ const Welcome: React.FC = () => {
         </p>
         <button
           className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-2 px-4 rounded mb-4"
-          onClick={() => navigate('/enterprise-setup')}
+          onClick={() => navigate('/admin-setup')}
         >
-          Enterprise Setup
+          Admin Setup (Recommended)
         </button>
         <div className="text-xs text-gray-500 mb-2">For production, secure, multi-user deployments</div>
         <button

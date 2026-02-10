@@ -13,9 +13,7 @@ import SharedSecret from './pages/SharedSecret';
 import AdminSetup from './pages/AdminSetup';
 import Welcome from './pages/Welcome';
 import Layout from './components/Layout';
-import { register } from './services/authService';
 import { ThemeProvider } from './contexts/ThemeContext';
-import EnterpriseSetup from './pages/EnterpriseSetup';
 import DemoSetup from './pages/DemoSetup';
 import PasswordRecovery from './pages/PasswordRecovery';
 
@@ -71,27 +69,6 @@ const App: React.FC = () => {
       }
     };
     removeDemoAdmin();
-
-    // Attempt to create the default admin user on startup
-    const initDefaultUser = async () => {
-      try {
-        await register('admin', 'admin', 'What is your favorite color?', 'blue');
-        console.log('Default admin user initialized');
-      } catch (error: any) {
-        // User likely already exists or backend is unreachable, which is fine
-        const errorMessage = error?.message || String(error);
-        if (errorMessage.includes('Username already exists') || errorMessage.includes('already exists')) {
-          console.log('✓ Default admin user already exists');
-        } else if (errorMessage.includes('Registration failed') && errorMessage.includes('400')) {
-          // 400 error during registration typically means user exists
-          console.log('✓ Default admin user already exists (implicit)');
-        } else {
-          // Only log if it's a real error (not just user exists)
-          console.debug('Default admin user setup: ', errorMessage);
-        }
-      }
-    };
-    initDefaultUser();
   }, []);
 
   // Check if any admin or demo user exists
@@ -102,7 +79,7 @@ const App: React.FC = () => {
       <HashRouter>
         <Routes>
           <Route path="/welcome" element={<Welcome />} />
-          <Route path="/enterprise-setup" element={<EnterpriseSetup />} />
+          <Route path="/enterprise-setup" element={<Navigate to="/admin-setup" replace />} />
           <Route path="/demo-setup" element={<DemoSetup />} />
           <Route path="/login" element={
             <PublicRoute>

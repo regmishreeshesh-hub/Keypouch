@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Shield, Loader2, Building2, User, Lock, HelpCircle, CheckCircle } from 'lucide-react';
-import { useTheme } from '../contexts/ThemeContext';
+import { Shield, Loader2, Building2, User, HelpCircle, CheckCircle } from 'lucide-react';
 import * as authService from '../services/authService';
 
 const SECURITY_QUESTIONS = [
@@ -22,6 +21,7 @@ interface AdminRegistrationData {
 }
 
 const AdminSetup: React.FC = () => {
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [formData, setFormData] = useState<AdminRegistrationData>({
     username: '',
     password: '',
@@ -36,7 +36,6 @@ const AdminSetup: React.FC = () => {
   const [companyLogo, setCompanyLogo] = useState<string | null>(null);
   const [adminExists, setAdminExists] = useState(false);
   const navigate = useNavigate();
-  const { theme } = useTheme();
 
   useEffect(() => {
     // Check if real admin exists
@@ -51,6 +50,33 @@ const AdminSetup: React.FC = () => {
     };
     checkAdmin();
   }, []);
+
+  const getStepError = (targetStep: number) => {
+    if (targetStep === 1) {
+      if (!formData.companyName) return 'Company name is required';
+      return '';
+    }
+    if (targetStep === 2) {
+      if (!formData.username) return 'Admin username is required';
+      if (!formData.password) return 'Password is required';
+      if (!formData.confirmPassword) return 'Please confirm your password';
+      if (formData.password.length < 8) return 'Password must be at least 8 characters long';
+      if (formData.password !== formData.confirmPassword) return 'Passwords do not match';
+      return '';
+    }
+    if (targetStep === 3) {
+      if (!formData.securityQuestion) return 'Security question is required';
+      if (!formData.securityAnswer) return 'Security answer is required';
+      return '';
+    }
+    return '';
+  };
+
+  const canGoNext = (currentStep: 1 | 2 | 3) => {
+    if (currentStep === 1) return getStepError(1) === '';
+    if (currentStep === 2) return getStepError(2) === '';
+    return false;
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -72,8 +98,22 @@ const AdminSetup: React.FC = () => {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleNext = () => {
+    setError('');
+    const err = getStepError(step);
+    if (err) {
+      setError(err);
+      return;
+    }
+    if (step < 3) setStep((step + 1) as 2 | 3);
+  };
+
+  const handleBack = () => {
+    setError('');
+    if (step > 1) setStep((step - 1) as 1 | 2);
+  };
+
+  const handleSubmit = async () => {
     setLoading(true);
     setError('');
     setSuccess('');
@@ -148,10 +188,10 @@ const AdminSetup: React.FC = () => {
           </div>
         </div>
         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900 dark:text-white">
-          Setup Your Admin Account
+          Guided Admin Setup
         </h2>
         <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
-          Create your organization's administrator account
+          Create your organization admin in 3 quick steps
         </p>
         <div className="mt-4 text-center">
           <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
@@ -176,21 +216,63 @@ const AdminSetup: React.FC = () => {
             </div>
           )}
 
-          <form className="space-y-6" onSubmit={handleSubmit}>
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <div className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-semibold ${step >= 1 ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}>1</div>
+              <div className="text-xs font-medium text-gray-700 dark:text-gray-300">Organization</div>
+            </div>
+            <div className="flex-1 mx-3 h-px bg-gray-200 dark:bg-gray-700" />
+            <div className="flex items-center gap-2">
+              <div className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-semibold ${step >= 2 ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}>2</div>
+              <div className="text-xs font-medium text-gray-700 dark:text-gray-300">Admin</div>
+            </div>
+            <div className="flex-1 mx-3 h-px bg-gray-200 dark:bg-gray-700" />
+            <div className="flex items-center gap-2">
+              <div className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-semibold ${step >= 3 ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}>3</div>
+              <div className="text-xs font-medium text-gray-700 dark:text-gray-300">Recovery</div>
+            </div>
+          </div>
+
+          <form
+            className="space-y-6"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (step < 3) {
+                handleNext();
+              } else {
+                const err = getStepError(3);
+                if (err) {
+                  setError(err);
+                  return;
+                }
+                handleSubmit();
+              }
+            }}
+          >
             <div>
-              <label htmlFor="companyLogo" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Company Logo
-              </label>
-              <div className="mt-1">
-                <input
-                  id="companyLogo"
-                  name="companyLogo"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleLogoChange}
-                  className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                />
-              </div>
+              {step === 1 && (
+                <>
+                  <label htmlFor="companyLogo" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Company Logo (optional)
+                  </label>
+                  <div className="mt-1">
+                    <input
+                      id="companyLogo"
+                      name="companyLogo"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleLogoChange}
+                      className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    />
+                    {companyLogo && (
+                      <div className="mt-3 flex items-center gap-3">
+                        <img src={companyLogo} alt="Company logo preview" className="h-10 w-10 rounded-full object-cover border border-gray-300 dark:border-gray-600" />
+                        <div className="text-xs text-gray-500 dark:text-gray-400">Saved for login screen</div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
 
             {error && (
@@ -203,128 +285,174 @@ const AdminSetup: React.FC = () => {
               </div>
             )}
 
-            <div>
-              <label htmlFor="companyName" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Company Name
-              </label>
-              <div className="mt-1">
-                <input
-                  id="companyName"
-                  name="companyName"
-                  type="text"
-                  required
-                  value={formData.companyName}
-                  onChange={handleInputChange}
-                  className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  placeholder="Your company name"
-                />
+            {step === 1 && (
+              <div>
+                <label htmlFor="companyName" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Company Name
+                </label>
+                <div className="mt-1">
+                  <input
+                    id="companyName"
+                    name="companyName"
+                    type="text"
+                    required
+                    value={formData.companyName}
+                    onChange={handleInputChange}
+                    className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    placeholder="Your company name"
+                  />
+                </div>
               </div>
-            </div>
+            )}
+
+            {step === 2 && (
+              <div>
+                <label htmlFor="username" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Admin Username
+                </label>
+                <div className="mt-1">
+                  <input
+                    id="username"
+                    name="username"
+                    type="text"
+                    required
+                    value={formData.username}
+                    onChange={handleInputChange}
+                    className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    placeholder="admin@yourcompany"
+                  />
+                </div>
+              </div>
+            )}
+
+            {step === 2 && (
+              <>
+                <div>
+                  <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Password
+                  </label>
+                  <div className="mt-1">
+                    <input
+                      id="password"
+                      name="password"
+                      type="password"
+                      required
+                      value={formData.password}
+                      onChange={handleInputChange}
+                      className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="Min. 8 characters"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Confirm Password
+                  </label>
+                  <div className="mt-1">
+                    <input
+                      id="confirmPassword"
+                      name="confirmPassword"
+                      type="password"
+                      required
+                      value={formData.confirmPassword}
+                      onChange={handleInputChange}
+                      className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="Re-enter password"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {step === 3 && (
+              <div className="rounded-md bg-gray-50 dark:bg-gray-900/30 border border-gray-200 dark:border-gray-700 p-4">
+                <div className="text-sm font-medium text-gray-900 dark:text-white mb-2">Review</div>
+                <div className="text-sm text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                  <Building2 className="w-4 h-4" />
+                  <span className="font-medium">Company:</span> {formData.companyName || '—'}
+                </div>
+                <div className="text-sm text-gray-700 dark:text-gray-300 flex items-center gap-2 mt-1">
+                  <User className="w-4 h-4" />
+                  <span className="font-medium">Admin:</span> {formData.username || '—'}
+                </div>
+              </div>
+            )}
+
+            {step === 3 && (
+              <>
+                <div>
+                  <label htmlFor="securityQuestion" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Security Question
+                  </label>
+                  <div className="mt-1">
+                    <select
+                      id="securityQuestion"
+                      name="securityQuestion"
+                      required
+                      value={formData.securityQuestion}
+                      onChange={handleInputChange}
+                      className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    >
+                      {SECURITY_QUESTIONS.map((q) => (
+                        <option key={q} value={q}>{q}</option>
+                      ))}
+                    </select>
+                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                      <HelpCircle className="w-3.5 h-3.5" />
+                      Used to verify you for password recovery.
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="securityAnswer" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Security Answer
+                  </label>
+                  <div className="mt-1">
+                    <input
+                      id="securityAnswer"
+                      name="securityAnswer"
+                      type="text"
+                      required
+                      value={formData.securityAnswer}
+                      onChange={handleInputChange}
+                      className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="Your security answer"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
 
             <div>
-              <label htmlFor="username" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Admin Username
-              </label>
-              <div className="mt-1">
-                <input
-                  id="username"
-                  name="username"
-                  type="text"
-                  required
-                  value={formData.username}
-                  onChange={handleInputChange}
-                  className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  placeholder="admin@yourcompany"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Password
-              </label>
-              <div className="mt-1">
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  required
-                  value={formData.password}
-                  onChange={handleInputChange}
-                  className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  placeholder="Min. 8 characters"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Confirm Password
-              </label>
-              <div className="mt-1">
-                <input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type="password"
-                  required
-                  value={formData.confirmPassword}
-                  onChange={handleInputChange}
-                  className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  placeholder="Re-enter password"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="securityQuestion" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Security Question
-              </label>
-              <div className="mt-1">
-                <select
-                  id="securityQuestion"
-                  name="securityQuestion"
-                  required
-                  value={formData.securityQuestion}
-                  onChange={handleInputChange}
-                  className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  disabled={loading || step === 1}
+                  className="flex-1 flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {SECURITY_QUESTIONS.map((q) => (
-                    <option key={q} value={q}>{q}</option>
-                  ))}
-                </select>
-                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
-                  <HelpCircle className="w-3.5 h-3.5" />
-                  This is used to verify you for password recovery.
-                </p>
+                  Back
+                </button>
+                {step < 3 ? (
+                  <button
+                    type="submit"
+                    disabled={loading || !canGoNext(step)}
+                    className="flex-1 flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="flex-1 flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {loading ? <Loader2 className="animate-spin h-5 w-5" /> : 'Create Admin Account'}
+                  </button>
+                )}
               </div>
-            </div>
-
-            <div>
-              <label htmlFor="securityAnswer" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Security Answer
-              </label>
-              <div className="mt-1">
-                <input
-                  id="securityAnswer"
-                  name="securityAnswer"
-                  type="text"
-                  required
-                  value={formData.securityAnswer}
-                  onChange={handleInputChange}
-                  className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  placeholder="Your security answer"
-                />
-              </div>
-            </div>
-
-            <div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? <Loader2 className="animate-spin h-5 w-5" /> : 'Create Admin Account'}
-              </button>
             </div>
           </form>
 

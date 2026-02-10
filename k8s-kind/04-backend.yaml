@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keypouch-backend
+  namespace: keypouch
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keypouch
+      component: backend
+  template:
+    metadata:
+      labels:
+        app: keypouch
+        component: backend
+    spec:
+      containers:
+        - name: backend
+          image: keypouch/backend:kind
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5001
+          envFrom:
+            - configMapRef:
+                name: keypouch-config
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keypouch-secrets
+                  key: DB_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: keypouch-secrets
+                  key: JWT_SECRET
+          readinessProbe:
+            httpGet:
+              path: /api/health/ready
+              port: 5001
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/health/live
+              port: 5001
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keypouch-backend
+  namespace: keypouch
+spec:
+  selector:
+    app: keypouch
+    component: backend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 5001
+      protocol: TCP
+  type: ClusterIP
