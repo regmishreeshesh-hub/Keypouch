@@ -41,9 +41,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <div className="flex justify-between h-16">
             <div className="flex">
               <div className="flex-shrink-0 flex items-center gap-2">
-                <div className="bg-primary-600 p-1.5 rounded-lg">
-                  <Shield className="h-6 w-6 text-white" />
-                </div>
+                <img src="/static/keypouch-logo.png" alt="KeyPouch Logo" className="h-8 w-8 object-contain" />
                 <span className="font-bold text-xl text-gray-900 dark:text-white">KeyPouch</span>
               </div>
               <div className="hidden sm:ml-8 sm:flex sm:space-x-8">

@@ -55,11 +55,9 @@ const AdminDashboard: React.FC = () => {
         <div className="space-y-6">
             <div className="flex items-center gap-4 mb-6">
                 {logoData ? (
-                    <img src={logoData} alt="Company Logo" className="h-16 w-16 rounded-full object-cover border border-primary-600 shadow-lg" />
+                    <img src={logoData} alt="Company Logo" className="h-16 w-16 object-contain border border-primary-600 shadow-lg" />
                 ) : (
-                    <div className="rounded-full bg-primary-600 p-4">
-                        <Shield className="h-10 w-10 text-white" />
-                    </div>
+                    <img src="/static/keypouch-logo.png" alt="KeyPouch Logo" className="h-16 w-16 object-contain border border-primary-600 shadow-lg" />
                 )}
                 <div>
                     <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Admin Dashboard</h1>

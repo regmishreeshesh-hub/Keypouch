@@ -109,11 +109,9 @@ const Login: React.FC = () => {
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center mb-4">
           {logoData ? (
-            <img src={logoData} alt="Company Logo" className="h-16 w-16 rounded-full object-cover border border-gray-300 dark:border-gray-600" />
+            <img src={logoData} alt="Company Logo" className="h-16 w-16 object-contain" />
           ) : (
-            <div className="rounded-full bg-primary-600 p-3">
-              <Shield className="h-10 w-10 text-white" />
-            </div>
+            <img src="/static/keypouch-logo.png" alt="KeyPouch Logo" className="h-16 w-16 object-contain" />
           )}
         </div>
         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900 dark:text-white">Sign in to KeyPouch</h2>
