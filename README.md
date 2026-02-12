@@ -1,7 +1,3 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
-
 # KeyPouch Directory
 
 A secure secret management system with role-based access control, team collaboration, and comprehensive audit logging.
@@ -38,15 +34,31 @@ A secure secret management system with role-based access control, team collabora
    cd keypouch-directory
    ```
 
-2. Start the application:
+2. **Option A: Standard Setup**
    ```bash
    docker-compose up -d
    ```
 
-3. Access the application:
+3. **Option B: SSL Setup (Recommended)**
+   ```bash
+   # Generate SSL certificates
+   ./generate-ssl.sh
+   
+   # Start with SSL
+   docker compose -f docker-compose.yml -f docker-compose.ssl.yml up -d
+   ```
+
+4. Access the application:
+   
+   **Standard Setup**:
    - Frontend: http://localhost:3002
    - Backend API: http://localhost:5001
    - Database: localhost:5435
+   - Default admin credentials: `admin` / `admin`
+   
+   **SSL Setup**:
+   - HTTPS: https://localhost
+   - HTTP: http://localhost (redirects to HTTPS)
    - Default admin credentials: `admin` / `admin`
 
 ### Manual Setup
@@ -149,6 +161,78 @@ VITE_API_URL=http://localhost:5001/api
    - Use environment-specific secrets
    - Configure reverse proxy (nginx/Apache)
    - Set up SSL certificates
+
+### SSL Certificate Setup
+
+#### Self-Signed SSL (Development)
+
+1. **Generate SSL Certificates**:
+   ```bash
+   ./generate-ssl.sh
+   ```
+
+2. **Start with SSL**:
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.ssl.yml up -d
+   ```
+
+3. **Access Application**:
+   - HTTPS: https://localhost
+   - HTTP: http://localhost (redirects to HTTPS)
+
+4. **Trust Certificate** (to avoid browser warnings):
+   - Chrome: Settings → Privacy → Manage certificates → Import → `ssl/keypouch.crt`
+   - Firefox: Settings → Privacy → Certificates → Import → `ssl/keypouch.crt`
+
+#### SSL Certificate Options
+
+```bash
+# Generate with custom domain
+./generate-ssl.sh --domain keypouch.local --all
+
+# Generate with custom organization
+./generate-ssl.sh --org "My Company" --validity 730
+
+# Generate all configurations
+./generate-ssl.sh --all
+```
+
+#### Production SSL
+
+For production deployment:
+
+1. **Let's Encrypt (Free)**:
+   ```bash
+   # Install certbot
+   sudo apt-get install certbot python3-certbot-nginx
+   
+   # Generate certificate
+   sudo certbot --nginx -d yourdomain.com
+   ```
+
+2. **Commercial Certificates**:
+   - Generate CSR: `openssl req -new -key private.key -out domain.csr`
+   - Submit CSR to certificate authority
+   - Install received certificates
+
+3. **Update Nginx Configuration**:
+   ```nginx
+   ssl_certificate /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
+   ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
+   ```
+
+#### SSL Troubleshooting
+
+```bash
+# Fix SSL issues
+./fix-ssl.sh
+
+# Check certificate expiration
+openssl x509 -in ssl/keypouch.crt -noout -dates
+
+# Test SSL configuration
+curl -k https://localhost/health
+```
 
 ### Cloud Deployment Options
 
