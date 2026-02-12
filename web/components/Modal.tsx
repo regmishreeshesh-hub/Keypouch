@@ -20,8 +20,8 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }) => {
 
         <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
 
-        <div className="inline-block align-bottom bg-white dark:bg-gray-800 rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full">
-          <div className="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4 border-b border-gray-100 dark:border-gray-700">
+        <div className="inline-block align-bottom bg-white dark:bg-gray-800 rounded-xl text-left shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full">
+          <div className="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4 border-b border-gray-100 dark:border-gray-700 rounded-t-xl">
             <div className="flex justify-between items-center">
               <h3 className="text-lg leading-6 font-semibold text-gray-900 dark:text-white" id="modal-title">
                 {title}
@@ -34,7 +34,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }) => {
               </button>
             </div>
           </div>
-          <div className="px-4 pt-5 pb-4 sm:p-6 bg-gray-50 dark:bg-gray-900/50">
+          <div className="px-4 pt-5 pb-4 sm:p-6 bg-gray-50 dark:bg-gray-900/50 rounded-b-xl">
             {children}
           </div>
         </div>

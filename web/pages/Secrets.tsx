@@ -4,8 +4,9 @@ import * as secretService from '../services/secretService';
 import * as encryptionService from '../services/encryptionService';
 import Modal from '../components/Modal';
 import SharingModal from '../components/SharingModal';
+import PasswordGenerator from '../components/PasswordGenerator';
 import SearchBar from '../components/ui/SearchBar';
-import { Plus, Trash2, Key, Database, Globe, FileText, Loader2, Lock, ShieldCheck, Server, Layers, X, Share2, Copy, Check, Eye, EyeOff, Edit, ShieldAlert } from 'lucide-react';
+import { Plus, Trash2, Key, Database, Globe, FileText, Loader2, Lock, ShieldCheck, Server, Layers, X, Share2, Copy, Check, Eye, EyeOff, Edit, ShieldAlert, Zap } from 'lucide-react';
 
 const SECRET_TYPES = [
   { id: 'api_key', label: 'API Key / Token' },
@@ -214,6 +215,7 @@ const Secrets: React.FC = () => {
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
   const [visiblePasswordId, setVisiblePasswordId] = useState<number | null>(null);
+  const [showPasswordGenerator, setShowPasswordGenerator] = useState(false);
 
   const handleShareClick = (secret: Secret) => {
     setCurrentShareSecret({
@@ -558,13 +560,35 @@ const Secrets: React.FC = () => {
               </div>
               <div>
                 <label className="text-xs font-medium text-gray-500">Password</label>
-                <input
-                  type="password"
-                  placeholder="••••••••••••"
-                  className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600 text-sm font-mono"
-                  value={currentSecret.password || ''}
-                  onChange={e => setCurrentSecret({ ...currentSecret, password: e.target.value })}
-                />
+                <div className="relative">
+                  <input
+                    type="password"
+                    placeholder="••••••••••••"
+                    className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600 text-sm font-mono"
+                    value={currentSecret.password || ''}
+                    onChange={e => setCurrentSecret({ ...currentSecret, password: e.target.value })}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswordGenerator(!showPasswordGenerator)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-primary-600 dark:hover:text-primary-400"
+                    title="Generate Strong Password"
+                  >
+                    <Zap className="w-4 h-4" />
+                  </button>
+
+                  {showPasswordGenerator && (
+                    <div className="absolute top-12 right-0 z-50 w-full min-w-[300px] max-w-[350px]">
+                      <PasswordGenerator
+                        onSelectPassword={(password) => {
+                          setCurrentSecret({ ...currentSecret, password: password });
+                          setShowPasswordGenerator(false);
+                        }}
+                        onClose={() => setShowPasswordGenerator(false)}
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -633,7 +657,7 @@ const Secrets: React.FC = () => {
           </div>
         </div>
       </Modal>
-    </div>
+    </div >
   );
 };
 
