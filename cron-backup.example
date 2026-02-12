@@ -1,0 +1,11 @@
+# KeyPouch Automated Backup Cron Job Configuration
+# Add this to your crontab with: crontab -e
+
+# Backup KeyPouch database every day at 2:00 AM
+0 2 * * * /home/shree/Keypouch/backup-db.sh backup >/dev/null 2>&1
+
+# Backup KeyPouch database every Sunday at 3:00 AM with full cleanup
+0 3 * * 0 /home/shree/Keypouch/backup-db.sh backup >/dev/null 2>&1
+
+# Example of backup with logging (optional)
+# 0 2 * * * /home/shree/Keypouch/backup-db.sh backup >> /home/shree/Keypouch/logs/backup.log 2>&1

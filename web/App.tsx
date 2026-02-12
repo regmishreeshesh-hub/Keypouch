@@ -4,6 +4,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import ChangePassword from './pages/ChangePassword';
 import Contacts from './pages/Contacts';
 import Secrets from './pages/Secrets';
 import AdminDashboard from './pages/AdminDashboard';
@@ -100,6 +101,11 @@ const App: React.FC = () => {
             <PublicRoute>
               <ResetPassword />
             </PublicRoute>
+          } />
+          <Route path="/change-password" element={
+            <ProtectedRoute>
+              <ChangePassword />
+            </ProtectedRoute>
           } />
           <Route path="/share/:token" element={
               <SharedSecret />

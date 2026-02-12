@@ -8,6 +8,14 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
+        // Configure for proxy setup
+        hmr: {
+          port: 3000,
+        },
+        // Configure client to work behind proxy
+        cors: true,
+        // Disable strict port checking for development
+        strictPort: false,
       },
       plugins: [react()],
       css: {
