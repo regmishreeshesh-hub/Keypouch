@@ -17,6 +17,7 @@ import Layout from './components/Layout';
 import { ThemeProvider } from './contexts/ThemeContext';
 import DemoSetup from './pages/DemoSetup';
 import PasswordRecovery from './pages/PasswordRecovery';
+import TestPasswordGen from './pages/TestPasswordGen';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const token = localStorage.getItem('token');
@@ -33,7 +34,7 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
     return <Navigate to="/login" replace />;
   }
   if (role !== 'admin') {
-      return <Navigate to="/contacts" replace />;
+    return <Navigate to="/contacts" replace />;
   }
   return <Layout>{children}</Layout>;
 };
@@ -108,7 +109,7 @@ const App: React.FC = () => {
             </ProtectedRoute>
           } />
           <Route path="/share/:token" element={
-              <SharedSecret />
+            <SharedSecret />
           } />
           <Route path="/contacts" element={
             <ProtectedRoute>
@@ -156,6 +157,7 @@ const App: React.FC = () => {
             </AdminRoute>
           } /> */}
 
+          <Route path="/test-gen" element={<PublicRoute><TestPasswordGen /></PublicRoute>} />
           <Route path="/" element={<Navigate to={hasAdminOrDemo ? "/contacts" : "/welcome"} replace />} />
         </Routes>
       </HashRouter>
