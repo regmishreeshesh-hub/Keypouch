@@ -35,31 +35,31 @@ export const registerAdmin = async (payload: { username: string; password: strin
 };
 
 export const getSecurityQuestion = async (username: string): Promise<{ question: string }> => {
-    try {
-        return await request(`${API_BASE_URL}/auth/security-question?username=${encodeURIComponent(username)}`, {
-            method: 'GET'
-        });
-    } catch (error: any) {
-        throw new Error(error.error || 'User not found or no security question set');
-    }
+  try {
+    return await request(`${API_BASE_URL}/auth/security-question?username=${encodeURIComponent(username)}`, {
+      method: 'GET'
+    });
+  } catch (error: any) {
+    throw new Error(error.error || 'User not found or no security question set');
+  }
 };
 
 export const verifySecurityAnswer = async (username: string, answer: string): Promise<{ message: string, token: string }> => {
-    try {
-        return await request(`${API_BASE_URL}/auth/verify-security-answer`, {
-            method: 'POST',
-            body: JSON.stringify({ username, answer })
-        });
-    } catch (error: any) {
-        throw new Error(error.error || 'Verification failed');
-    }
+  try {
+    return await request(`${API_BASE_URL}/auth/verify-security-answer`, {
+      method: 'POST',
+      body: JSON.stringify({ username, answer })
+    });
+  } catch (error: any) {
+    throw new Error(error.error || 'Verification failed');
+  }
 };
 
 export const requestPasswordReset = async (username: string): Promise<{ message: string; token?: string }> => {
   try {
     return await request(`${API_BASE_URL}/request-password-reset`, {
-        method: 'POST',
-        body: JSON.stringify({ username })
+      method: 'POST',
+      body: JSON.stringify({ username })
     });
   } catch (error: any) {
     throw new Error(error.error || 'Request failed');
@@ -67,14 +67,14 @@ export const requestPasswordReset = async (username: string): Promise<{ message:
 };
 
 export const resetPassword = async (token: string, newPassword: string): Promise<{ message: string }> => {
-    try {
-        return await request(`${API_BASE_URL}/reset-password`, {
-            method: 'POST',
-            body: JSON.stringify({ token, newPassword })
-        });
-    } catch (error: any) {
-        throw new Error(error.error || 'Reset failed');
-    }
+  try {
+    return await request(`${API_BASE_URL}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ token, newPassword })
+    });
+  } catch (error: any) {
+    throw new Error(error.error || 'Reset failed');
+  }
 }
 
 export const changeMyPassword = async (payload: { new_password: string; current_password?: string }): Promise<{ message: string; token: string }> => {
@@ -175,25 +175,10 @@ export const getUserAuditLogs = async (id: number): Promise<AuditLog[]> => {
 
 export const createDemoUser = async (username: string, password: string): Promise<{ message: string }> => {
   try {
-    // Try multiple possible API endpoints
-    const endpoints = [
-      `${API_BASE_URL}/demo/create-user`,
-      'http://localhost:5001/api/demo/create-user',
-      `${window.location?.protocol}//${window.location?.hostname}:5001/api/demo/create-user`
-    ];
-    
-    for (const endpoint of endpoints) {
-      try {
-        return await request(endpoint, {
-          method: 'POST',
-          body: JSON.stringify({ username, password }),
-        });
-      } catch (err) {
-        // Try next endpoint
-        continue;
-      }
-    }
-    throw new Error('Unable to connect to demo service');
+    return await request(`${API_BASE_URL}/demo/create-user`, {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    });
   } catch (error: any) {
     throw new Error(error.error || 'Failed to create demo user');
   }
@@ -201,25 +186,10 @@ export const createDemoUser = async (username: string, password: string): Promis
 
 export const resetDemoPassword = async (username: string, newPassword: string): Promise<{ message: string }> => {
   try {
-    // Try multiple possible API endpoints
-    const endpoints = [
-      `${API_BASE_URL}/demo/reset-password`,
-      'http://localhost:5001/api/demo/reset-password',
-      `${window.location?.protocol}//${window.location?.hostname}:5001/api/demo/reset-password`
-    ];
-    
-    for (const endpoint of endpoints) {
-      try {
-        return await request(endpoint, {
-          method: 'POST',
-          body: JSON.stringify({ username, newPassword }),
-        });
-      } catch (err) {
-        // Try next endpoint
-        continue;
-      }
-    }
-    throw new Error('Unable to connect to demo service');
+    return await request(`${API_BASE_URL}/demo/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ username, newPassword }),
+    });
   } catch (error: any) {
     throw new Error(error.error || 'Failed to reset demo password');
   }

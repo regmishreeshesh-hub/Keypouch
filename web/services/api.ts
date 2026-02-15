@@ -12,15 +12,17 @@ const resolveApiBaseUrl = () => {
     return reactApiUrl.replace(/\/+$/, '');
   }
 
-  // Default fallback - use localhost for docker-compose setup
-  return 'http://localhost:5001/api';
+  // Default to relative path /api to support both:
+  // 1. Production (Nginx serves frontend and proxies /api -> backend)
+  // 2. Development (Vite proxies /api -> localhost:5001)
+  return '/api';
 };
 
 export const API_BASE_URL = resolveApiBaseUrl();
 
 export const request = async (endpoint: string, options: RequestInit = {}): Promise<any> => {
   const url = endpoint.startsWith(API_BASE_URL) ? endpoint : `${API_BASE_URL}${endpoint}`;
-  
+
   const defaultHeaders = {
     'Content-Type': 'application/json',
   };

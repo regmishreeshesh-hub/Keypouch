@@ -3,32 +3,39 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
-    const env = loadEnv(mode, '.', '');
-    return {
-      server: {
-        port: 3000,
-        host: '0.0.0.0',
-        // Configure for proxy setup
-        hmr: {
-          port: 3000,
+  const env = loadEnv(mode, '.', '');
+  return {
+    server: {
+      port: 3000,
+      host: '0.0.0.0',
+      proxy: {
+        '/api': {
+          target: 'http://localhost:5001',
+          changeOrigin: true,
+          secure: false,
         },
-        // Configure client to work behind proxy
-        cors: true,
-        // Disable strict port checking for development
-        strictPort: false,
       },
-      plugins: [react()],
-      css: {
-        postcss: './postcss.config.cjs',
+      // Configure for proxy setup
+      hmr: {
+        port: 3000,
       },
-      define: {
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
-      },
-      resolve: {
-        alias: {
-          '@': path.resolve(__dirname, '.'),
-        }
+      // Configure client to work behind proxy
+      cors: true,
+      // Disable strict port checking for development
+      strictPort: false,
+    },
+    plugins: [react()],
+    css: {
+      postcss: './postcss.config.cjs',
+    },
+    define: {
+      'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
+    },
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, '.'),
       }
-    };
+    }
+  };
 });

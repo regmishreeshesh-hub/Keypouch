@@ -33,29 +33,15 @@ const Login: React.FC = () => {
     // Check if demo mode is available
     const checkDemoMode = async () => {
       try {
-        // Try multiple possible API endpoints
-        const endpoints = [
-          '/api/demo/exists',
-          'http://localhost:5001/api/demo/exists',
-          `${window.location.protocol}//${window.location.hostname}:5001/api/demo/exists`
-        ];
-        
-        for (const endpoint of endpoints) {
-          try {
-            const response = await fetch(endpoint);
-            const data = await response.json();
-            if (data.exists) {
-              setDemoMode(true);
-              console.log('Demo mode available via:', endpoint);
-              return;
-            }
-          } catch (err) {
-            // Try next endpoint
-            continue;
-          }
+        const response = await fetch('/api/demo/exists');
+        const data = await response.json();
+        if (data.exists) {
+          setDemoMode(true);
+          console.log('Demo mode available');
+        } else {
+          setDemoMode(false);
+          console.log('Demo mode not available');
         }
-        setDemoMode(false);
-        console.log('Demo mode not available');
       } catch (error) {
         console.log('Demo mode check failed:', error);
         setDemoMode(false);
@@ -230,7 +216,7 @@ const Login: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg w-full max-w-md mx-4">
             <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">Create Demo User</h3>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -243,7 +229,7 @@ const Login: React.FC = () => {
                   onChange={e => setDemoUsername(e.target.value)}
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Password
@@ -257,24 +243,24 @@ const Login: React.FC = () => {
                 />
               </div>
             </div>
-            
+
             {demoError && (
               <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded">
                 <p className="text-sm text-red-600 dark:text-red-400">{demoError}</p>
               </div>
             )}
-            
+
             {demoSuccess && (
               <div className="mt-3 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded">
                 <p className="text-sm text-green-600 dark:text-green-400">{demoSuccess}</p>
               </div>
             )}
-            
+
             <div className="flex gap-3 mt-6">
               <button
                 className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded transition-colors"
                 onClick={async () => {
-                  setDemoError(''); 
+                  setDemoError('');
                   setDemoSuccess('');
                   if (!demoUsername || !demoPassword) {
                     setDemoError('Username and password are required');
