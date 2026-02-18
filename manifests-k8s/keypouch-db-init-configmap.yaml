@@ -1,0 +1,136 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keypouch-db-init-configmap
+  namespace: keypouch
+data:
+  init.sql: "-- Drop and recreate users table with correct schema\nDROP TABLE IF EXISTS\
+    \ secrets CASCADE;\nDROP TABLE IF EXISTS contacts CASCADE;\nDROP TABLE IF EXISTS\
+    \ emergency_contacts CASCADE;\nDROP TABLE IF EXISTS call_logs CASCADE;\nDROP TABLE\
+    \ IF EXISTS sip_accounts CASCADE;\nDROP TABLE IF EXISTS users CASCADE;\n\n-- Create\
+    \ users table\nCREATE TABLE users (\n    id SERIAL PRIMARY KEY,\n    username\
+    \ VARCHAR(100) UNIQUE NOT NULL,\n    password VARCHAR(255) NOT NULL,\n    role\
+    \ VARCHAR(50) DEFAULT 'view' CHECK (role IN ('admin', 'full-access', 'modify',\
+    \ 'view')),\n    security_question TEXT,\n    security_answer TEXT,\n    is_disabled\
+    \ BOOLEAN NOT NULL DEFAULT FALSE,\n    must_reset_password BOOLEAN NOT NULL DEFAULT\
+    \ FALSE,\n    mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE,\n    mfa_secret TEXT,\n\
+    \    session_version INTEGER NOT NULL DEFAULT 0,\n    is_demo BOOLEAN NOT NULL\
+    \ DEFAULT FALSE,\n    last_login_at TIMESTAMP,\n    password_changed_at TIMESTAMP,\n\
+    \    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n);\n\n-- Create contacts\
+    \ table\nCREATE TABLE contacts (\n    id SERIAL PRIMARY KEY,\n    user_id INTEGER\
+    \ NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n    name VARCHAR(255) NOT\
+    \ NULL,\n    phone VARCHAR(50) NOT NULL,\n    address TEXT,\n    created_at TIMESTAMP\
+    \ DEFAULT CURRENT_TIMESTAMP\n);\n\n-- Create emergency_contacts table\nCREATE\
+    \ TABLE emergency_contacts (\n    id SERIAL PRIMARY KEY,\n    contact_id INTEGER\
+    \ NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,\n    name VARCHAR(255) NOT\
+    \ NULL,\n    phone VARCHAR(50) NOT NULL,\n    email VARCHAR(255) NOT NULL,\n \
+    \   relationship VARCHAR(50) NOT NULL,\n    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n\
+    );\n\n-- Create sip_accounts table\nCREATE TABLE sip_accounts (\n    id SERIAL\
+    \ PRIMARY KEY,\n    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n\
+    \    label VARCHAR(100),\n    server_type VARCHAR(50) NOT NULL,\n    server_host\
+    \ VARCHAR(255) NOT NULL,\n    server_port INTEGER NOT NULL DEFAULT 5060,\n   \
+    \ username VARCHAR(100) NOT NULL,\n    password_encrypted TEXT NOT NULL,\n   \
+    \ extension VARCHAR(50),\n    transport VARCHAR(10) NOT NULL DEFAULT 'wss',\n\
+    \    ws_path VARCHAR(50) NOT NULL DEFAULT '/ws',\n    created_at TIMESTAMP DEFAULT\
+    \ CURRENT_TIMESTAMP\n);\n\n-- Create call_logs table\nCREATE TABLE call_logs (\n\
+    \    id SERIAL PRIMARY KEY,\n    user_id INTEGER NOT NULL REFERENCES users(id)\
+    \ ON DELETE CASCADE,\n    contact_id INTEGER NOT NULL REFERENCES contacts(id)\
+    \ ON DELETE CASCADE,\n    sip_account_id INTEGER REFERENCES sip_accounts(id) ON\
+    \ DELETE SET NULL,\n    phone_number VARCHAR(50),\n    direction VARCHAR(10) NOT\
+    \ NULL,\n    status VARCHAR(20) NOT NULL,\n    duration_seconds INTEGER DEFAULT\
+    \ 0,\n    started_at TIMESTAMP NOT NULL,\n    ended_at TIMESTAMP,\n    created_at\
+    \ TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n);\n\n-- Create secrets table\nCREATE TABLE\
+    \ secrets (\n    id SERIAL PRIMARY KEY,\n    user_id INTEGER NOT NULL REFERENCES\
+    \ users(id) ON DELETE CASCADE,\n    title VARCHAR(255) NOT NULL,\n    category\
+    \ VARCHAR(50) DEFAULT 'general',\n    username VARCHAR(255),\n    password TEXT,\n\
+    \    api_key TEXT,\n    url TEXT,\n    notes TEXT,\n    encrypted_content TEXT,\n\
+    \    content_iv VARCHAR(255),\n    content_auth_tag VARCHAR(255),\n    version\
+    \ INTEGER DEFAULT 1,\n    encryption_algorithm VARCHAR(20) DEFAULT 'AES-256-GCM',\n\
+    \    is_deleted BOOLEAN DEFAULT FALSE,\n    deleted_at TIMESTAMP NULL,\n    created_at\
+    \ TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n\
+    );\n\n-- Create indexes\nCREATE INDEX idx_contacts_user_id ON contacts(user_id);\n\
+    CREATE INDEX idx_emergency_contacts_contact_id ON emergency_contacts(contact_id);\n\
+    CREATE INDEX idx_sip_accounts_user_id ON sip_accounts(user_id);\nCREATE INDEX\
+    \ idx_call_logs_contact_id ON call_logs(contact_id);\nCREATE INDEX idx_secrets_user_id\
+    \ ON secrets(user_id);\nCREATE INDEX idx_secrets_category ON secrets(category);\n\
+    \n-- Create default demo admin user (password is 'admin')\nINSERT INTO users (username,\
+    \ password, role, is_demo) \nVALUES ('admin', 'admin', 'admin', TRUE);\n\n-- Create\
+    \ sample users with different roles (demo users)\nINSERT INTO users (username,\
+    \ password, role, security_question, security_answer, is_demo) \nVALUES \n  ('viewuser',\
+    \ 'viewuser', 'view', 'What is your favorite color?', 'blue', TRUE),\n  ('modifyuser',\
+    \ 'modifyuser', 'modify', 'What is your favorite color?', 'green', TRUE),\n  ('fulluser',\
+    \ 'fulluser', 'full-access', 'What is your favorite color?', 'red', TRUE);\n\n\
+    -- Insert sample contacts for admin user\nINSERT INTO contacts (user_id, name,\
+    \ phone, address) VALUES\n    (1, 'John Doe', '+1-555-0101', '123 Main St, New\
+    \ York, NY 10001'),\n    (1, 'Jane Smith', '+1-555-0102', '456 Oak Ave, Los Angeles,\
+    \ CA 90001'),\n    (1, 'Bob Johnson', '+1-555-0103', '789 Pine Rd, Chicago, IL\
+    \ 60601'),\n    (1, 'Alice Williams', '+1-555-0104', '321 Elm St, Houston, TX\
+    \ 77001'),\n    (1, 'Charlie Brown', '+1-555-0105', '654 Maple Dr, Phoenix, AZ\
+    \ 85001'),\n    (1, 'David Lee', '+1-555-0106', '987 Cedar Ln, Philadelphia, PA\
+    \ 19101'),\n    (1, 'Emma Davis', '+1-555-0107', '147 Birch Ct, San Antonio, TX\
+    \ 78201'),\n    (1, 'Frank Miller', '+1-555-0108', '258 Spruce Way, San Diego,\
+    \ CA 92101'),\n    (1, 'Grace Wilson', '+1-555-0109', '369 Willow Pl, Dallas,\
+    \ TX 75201'),\n    (1, 'Henry Taylor', '+1-555-0110', '741 Ash Blvd, San Jose,\
+    \ CA 95101'),\n    -- Additional contacts from mock backend\n    (1, 'Sarah Connor',\
+    \ '(555) 123-4567', '123 Tech Blvd, Silicon Valley, CA'),\n    (1, 'John Wick',\
+    \ '(555) 987-6543', 'Continental Hotel, New York, NY'),\n    (1, 'Tony Stark',\
+    \ '(555) 777-8888', '10880 Malibu Point, Malibu, CA'),\n    (1, 'Bruce Wayne',\
+    \ '(555) 000-0000', '1007 Mountain Drive, Gotham');\n\n-- Insert sample emergency\
+    \ contacts\nINSERT INTO emergency_contacts (contact_id, name, phone, email, relationship)\
+    \ VALUES\n    (1, 'Mary Doe', '+1-555-0199', 'mary.doe@example.com', 'spouse'),\n\
+    \    (2, 'Sam Smith', '+1-555-0155', 'sam.smith@example.com', 'parent');\n\n--\
+    \ Insert sample secrets for admin user\nINSERT INTO secrets (user_id, title, category,\
+    \ username, password, url, notes) VALUES\n    (1, 'Gmail Account', 'password',\
+    \ 'admin@example.com', 'MySecureP@ssw0rd!', 'https://gmail.com', 'Personal email\
+    \ account'),\n    (1, 'GitHub', 'password', 'admin_dev', 'GitH@b2024Secure!',\
+    \ 'https://github.com', 'Development account'),\n    (1, 'AWS Console', 'password',\
+    \ 'admin.aws', 'AWS#Prod2024!', 'https://console.aws.amazon.com', 'Production\
+    \ AWS account'),\n    (1, 'OpenAI API Key', 'api', NULL, NULL, 'https://platform.openai.com',\
+    \ 'sk-proj-1234567890abcdef'),\n    (1, 'Stripe API Key', 'api', NULL, NULL, 'https://stripe.com',\
+    \ 'sk_live_abcdefghijklmnop'),\n    (1, 'Production Database', 'database', 'db_admin',\
+    \ 'ProdDB#2024!Secure', 'postgresql://prod-db.example.com:5432', 'Main production\
+    \ database credentials'),\n    (1, 'SSH Server Key', 'general', 'root', NULL,\
+    \ 'ssh://server.example.com', 'Private key stored in /home/admin/.ssh/id_rsa'),\n\
+    \    (1, 'Slack Workspace', 'password', 'admin@company.com', 'Sl@ckTeam2024!',\
+    \ 'https://company.slack.com', 'Company Slack workspace'),\n    (1, 'Twitter API',\
+    \ 'api', NULL, NULL, 'https://developer.twitter.com', 'Bearer token: AAAAAAAAAAAAAAAAAAAAABearerToken123456'),\n\
+    \    (1, 'WiFi Password', 'general', NULL, 'WiFi#Home2024!', NULL, 'Home WiFi\
+    \ network password'),\n    -- Additional secrets from mock backend\n    (1, 'Corporate\
+    \ WiFi', 'general', NULL, 'secure-guest-wifi', NULL, 'Guest network password for\
+    \ the 5th floor.'),\n    (1, 'AWS Production Access', 'api', NULL, NULL, NULL,\
+    \ 'AKIAJ567890123EXAMPLE - Read-only access for dashboard metrics.'),\n    (1,\
+    \ 'Primary Database', 'database', 'db_admin', 'production-db-password-!@#', 'jdbc:postgresql://prod-db.aws.com:5432/users',\
+    \ NULL),\n    (1, 'Email Service', 'password', 'sender@myapp.com', 'smtp-password-secure',\
+    \ 'smtp.sendgrid.net', NULL),\n    (1, 'Stripe API Key (Live)', 'api', NULL, NULL,\
+    \ NULL, 'sk_live_51H... - Live secret key for payment processing.');\n\n-- Create\
+    \ audit_logs table\nCREATE TABLE audit_logs (\n    id SERIAL PRIMARY KEY,\n  \
+    \  username VARCHAR(100) NOT NULL,\n    user_id INTEGER REFERENCES users(id) ON\
+    \ DELETE SET NULL,\n    action VARCHAR(100) NOT NULL,\n    details TEXT,\n   \
+    \ ip VARCHAR(45),\n    user_agent TEXT,\n    status VARCHAR(20),\n    resource_type\
+    \ VARCHAR(50),\n    resource_id VARCHAR(100),\n    transaction_id VARCHAR(100),\n\
+    \    log_hash VARCHAR(64),\n    previous_log_hash VARCHAR(64),\n    timestamp\
+    \ TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n);\n\n-- Create Shared Secrets Table\n\
+    CREATE TABLE shared_secrets (\n    id VARCHAR(63) PRIMARY KEY,\n    secret_id\
+    \ INTEGER NOT NULL REFERENCES secrets(id) ON DELETE CASCADE,\n    created_by INTEGER\
+    \ NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n    max_views INTEGER DEFAULT\
+    \ 1,\n    views_count INTEGER DEFAULT 0,\n    viewed_at TIMESTAMP NULL,\n    viewed_by_ip\
+    \ VARCHAR(45) NULL,\n    expires_at TIMESTAMP NULL,\n    is_revoked BOOLEAN DEFAULT\
+    \ FALSE,\n    revoked_at TIMESTAMP NULL,\n    encrypted_content TEXT,\n    content_iv\
+    \ VARCHAR(255),\n    content_auth_tag VARCHAR(255),\n    allowed_emails TEXT NULL,\n\
+    \    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n    destroyed_at TIMESTAMP\
+    \ NULL,\n    destruction_hash VARCHAR(64) NULL,\n    CONSTRAINT valid_views CHECK\
+    \ (views_count <= max_views OR max_views IS NULL)\n);\n\n-- Create Share Access\
+    \ Logs\nCREATE TABLE share_access_logs (\n    id SERIAL PRIMARY KEY,\n    share_id\
+    \ VARCHAR(63) REFERENCES shared_secrets(id) ON DELETE CASCADE,\n    accessed_from_ip\
+    \ VARCHAR(45),\n    user_agent TEXT,\n    access_status VARCHAR(20),\n    view_number\
+    \ INTEGER,\n    max_views_allowed INTEGER,\n    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n\
+    );\n\n-- Create indexes for audit_logs\nCREATE INDEX idx_audit_logs_timestamp\
+    \ ON audit_logs(timestamp);\nCREATE INDEX idx_audit_logs_username ON audit_logs(username);\n\
+    \n-- Create custom_categories table\nCREATE TABLE custom_categories (\n    id\
+    \ VARCHAR(50) PRIMARY KEY,\n    label VARCHAR(100) NOT NULL,\n    user_id INTEGER\
+    \ REFERENCES users(id) ON DELETE CASCADE,\n    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n\
+    \    UNIQUE(user_id, label)\n);\n\n-- Create index for custom_categories\nCREATE\
+    \ INDEX idx_custom_categories_user_id ON custom_categories(user_id);\n\n-- Add\
+    \ unique constraint for real admin users (only one real admin per system)\nCREATE\
+    \ UNIQUE INDEX idx_real_admin ON users (role) WHERE role = 'admin' AND is_demo\
+    \ = FALSE;\n"

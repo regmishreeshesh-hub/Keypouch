@@ -32,6 +32,8 @@ services:
       - backend
     env_file:
       - .env
+    environment:
+      - API_PROXY_TARGET=http://backend:5001
 
 volumes:
   postgres_data:
